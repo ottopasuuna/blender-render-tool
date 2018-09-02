@@ -1,7 +1,7 @@
 #! /bin/env python
 import argparse
 import cv2
-from common_ops import add, extract_foreground, diff
+from common_ops import add, extract_foreground, diff, blend_all
 
 def show_img(img):
     while True:
@@ -56,6 +56,13 @@ def call_extract_foreground(args):
     else:
         show_img(foreground)
 
+def call_blend(args):
+    images = [load_image(img) for img in args.images]
+    res = blend_all(images)
+    if args.output:
+        save_image(res, args.output)
+    else:
+        show_img(res)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
@@ -102,6 +109,12 @@ def parse_arguments():
                              help='Threshold value to use during foreground extraction.')
     extract_foreground_parser.add_argument('-o', '--output')
     extract_foreground_parser.set_defaults(func=call_extract_foreground)
+
+    # Image Blend
+    blend_parser = subparsers.add_parser('blend', help='blend frames together')
+    blend_parser.add_argument('images', nargs='+')
+    blend_parser.add_argument('-o', '--output')
+    blend_parser.set_defaults(func=call_blend)
 
     args = parser.parse_args()
 

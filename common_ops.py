@@ -45,3 +45,15 @@ def diff_optimize(im1, im2):
             best_score = (thresh, score)
         thresh += 1
     return best_score
+
+def blend(im1, im2):
+    res = cv2.addWeighted(im1, 0.5, im2, 0.5, 0)
+    return res
+
+def blend_all(imgs):
+    final = blend(imgs[0], imgs[1])
+    if len(imgs) > 2:
+        for img in imgs[2:]:
+            final = blend(final, img)
+    return final
+
