@@ -5,7 +5,7 @@ import argparse
 import cv2
 
 from common_ops import (add, extract_foreground, diff, blend_all,
-                        interpolate_flow)
+                        interpolate_flow, scale)
 
 def make_dir(path):
     if not os.path.exists(path):
@@ -41,11 +41,12 @@ def call_add_clutter(args):
     bg_with_subjects = [(load_image(path), path) for path in args.bg_with_subject]
     # bg_with_subject = load_image(args.bg_with_subject)
     # clutter = diff(bg_with_clutter, bg, 1)
+    make_dir(args.output)
     for (bg_with_subject, path) in bg_with_subjects:
         subject = extract_foreground(bg_with_subject, bg, args.threshold)
         merged = add(subject, bg_with_clutter)
         if args.output:
-            out_path = os.path.join(args.output, path) if num_subject_imgs>1 else args.output
+            out_path = os.path.join(args.output, os.path.basename(path)) if num_subject_imgs>1 else args.output
             save_image(merged, out_path)
         else:
             show_img(merged)
@@ -93,6 +94,23 @@ def call_interpolate(args):
             raise ValueError('Invalid interpolation mode')
         save_image(frame2, os.path.join(args.output, name_format.format(curr+1)))
         curr += 2
+
+def call_scale(args):
+    images = [(load_image(path), path) for path in args.images]
+    # img = load_image(args.image)
+    for (img, path) in images:
+        if args.percent:
+            height, width = int(img.shape[0]*args.percent), int(img.shape[1]*args.percent)
+        else:
+            width, height = args.width, args.height
+        res = scale(img, width, height, args.mode)
+        if args.output:
+            if os.path.isdir(args.output):
+                save_image(res, os.path.join(args.output, os.path.basename(path)))
+            else:
+                save_image(res, args.output)
+        else:
+            show_img(res)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
@@ -154,6 +172,19 @@ def parse_arguments():
     interp_parser.add_argument('-f', '--format', default='{0:04d}.png')
     interp_parser.add_argument('-m', '--mode', default='flow')
     interp_parser.set_defaults(func=call_interpolate)
+
+    # Image scaling
+    scale_parser = subparsers.add_parser('scale', help='Resize frames')
+    # scale_parser.add_argument('image', type=str)
+    scale_parser.add_argument('images', nargs='+', type=str)
+    scale_parser.add_argument('-m', '--mode', default='lanczos',
+            help='Interpolation mode to use when resizing.')
+    scale_parser.add_argument('-p', '--percent', type=float,
+            help=('Percentage change as a float'))
+    scale_parser.add_argument('--width', type=int)
+    scale_parser.add_argument('--height', type=int)
+    scale_parser.add_argument('-o', '--output')
+    scale_parser.set_defaults(func=call_scale)
 
     args = parser.parse_args()
 

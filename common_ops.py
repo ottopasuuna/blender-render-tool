@@ -75,3 +75,12 @@ def interpolate_flow(frame1, frame3):
     _flow[:, :, 1] += np.arange(h)[:, np.newaxis]
     frame2 = cv2.remap(frame1, _flow, None, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
     return frame2
+
+def scale(img, width, height, mode):
+    if mode == 'cubic':
+        interp = cv2.INTER_CUBIC
+    elif mode == 'lanczos':
+        interp = cv2.INTER_LANCZOS4
+    scaled_img = cv2.resize(img, (width, height), interpolation=interp)
+    return scaled_img
+
