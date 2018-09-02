@@ -57,3 +57,21 @@ def blend_all(imgs):
             final = blend(final, img)
     return final
 
+def flow(frame1, frame2):
+    prvs = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+    next = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+    _flow = cv2.calcOpticalFlowFarneback(prvs, next, None, 0.5, 2, 10, 5, 7, 1.2, 0)
+    return _flow
+
+def interpolate_flow(frame1, frame3):
+    # frame2 = cv2.addWeighted(frame1, 0.5, frame3, 0.5, 0)
+    # Thanks to github user koteth for the interpolation algorithm
+    _flow = flow(frame1, frame3)
+    h, w = _flow.shape[:2]
+    _flow = -_flow #?
+    _flow[:, :, 0] /= 2.0
+    _flow[:, :, 1] /= 2.0
+    _flow[:, :, 0] += np.arange(w)
+    _flow[:, :, 1] += np.arange(h)[:, np.newaxis]
+    frame2 = cv2.remap(frame1, _flow, None, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    return frame2

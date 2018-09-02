@@ -1,7 +1,15 @@
 #! /bin/env python
+import os
 import argparse
+
 import cv2
-from common_ops import add, extract_foreground, diff, blend_all
+
+from common_ops import (add, extract_foreground, diff, blend_all,
+                        interpolate_flow)
+
+def make_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 def show_img(img):
     while True:
@@ -29,14 +37,18 @@ def call_diff(args):
 def call_add_clutter(args):
     bg_with_clutter = load_image(args.bg_with_clutter)
     bg = load_image(args.background)
-    bg_with_subject = load_image(args.bg_with_subject)
+    num_subject_imgs = len(args.bg_with_subject)
+    bg_with_subjects = [(load_image(path), path) for path in args.bg_with_subject]
+    # bg_with_subject = load_image(args.bg_with_subject)
     # clutter = diff(bg_with_clutter, bg, 1)
-    subject = extract_foreground(bg_with_subject, bg, args.threshold)
-    merged = add(subject, bg_with_clutter)
-    if args.output:
-        save_image(merged, args.output)
-    else:
-        show_img(merged)
+    for (bg_with_subject, path) in bg_with_subjects:
+        subject = extract_foreground(bg_with_subject, bg, args.threshold)
+        merged = add(subject, bg_with_clutter)
+        if args.output:
+            out_path = os.path.join(args.output, path) if num_subject_imgs>1 else args.output
+            save_image(merged, out_path)
+        else:
+            show_img(merged)
 
 def call_add(args):
     im1 = load_image(args.image1)
@@ -64,6 +76,24 @@ def call_blend(args):
     else:
         show_img(res)
 
+def call_interpolate(args):
+    name_format = args.format
+    start, end = args.start, args.end
+    assert(start < end)
+    curr = start
+    make_dir(args.output)
+    while curr < end:
+        frame1 = load_image(os.path.join(args.frame_dir, name_format.format(curr)))
+        frame3 = load_image(os.path.join(args.frame_dir, name_format.format(curr+2)))
+        if args.mode == 'flow':
+            frame2 = interpolate_flow(frame1, frame3)
+        elif args.mode == 'blend':
+            frame2 = blend_all([frame1, frame3])
+        else:
+            raise ValueError('Invalid interpolation mode')
+        save_image(frame2, os.path.join(args.output, name_format.format(curr+1)))
+        curr += 2
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
     subparsers = parser.add_subparsers()
@@ -85,14 +115,13 @@ def parse_arguments():
     add_parser.set_defaults(func=call_add)
 
     # Add clutter
-    # TODO: Support multiple bg_with_subject
     add_clutter_parser = subparsers.add_parser('add-clutter', help='Add background object details to a frame')
     add_clutter_parser.add_argument('bg_with_clutter', type=str,
             help='Image with all background items or "clutter".')
     add_clutter_parser.add_argument('background', type=str,
             help='Image of just the background')
-    add_clutter_parser.add_argument('bg_with_subject', type=str,
-            help='Image of the background with the subject')
+    add_clutter_parser.add_argument('bg_with_subject', type=str, nargs='+',
+            help='Image(s) of the background with the subject')
     add_clutter_parser.add_argument('-t', '--threshold', default=8, type=int,
                              help='Threshold value to use during subject extraction.')
     add_clutter_parser.add_argument('-o', '--output')
@@ -115,6 +144,16 @@ def parse_arguments():
     blend_parser.add_argument('images', nargs='+')
     blend_parser.add_argument('-o', '--output')
     blend_parser.set_defaults(func=call_blend)
+
+    # Frame interpolation
+    interp_parser = subparsers.add_parser('interpolate', help='Interpolate frames')
+    interp_parser.add_argument('frame_dir', type=str)
+    interp_parser.add_argument('-s', '--start', required=True, type=int)
+    interp_parser.add_argument('-e', '--end', required=True, type=int)
+    interp_parser.add_argument('-o', '--output', default='interp_frames')
+    interp_parser.add_argument('-f', '--format', default='{0:04d}.png')
+    interp_parser.add_argument('-m', '--mode', default='flow')
+    interp_parser.set_defaults(func=call_interpolate)
 
     args = parser.parse_args()
 
