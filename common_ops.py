@@ -1,13 +1,25 @@
 import cv2
 import numpy as np
-from add import add
 
-def diff(im1, im2, th):
+def add(im1, im2):
+    im1gray = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
+    ret, mask = cv2.threshold(im1gray, 0, 255, cv2.THRESH_BINARY)
+    mask_inv = cv2.bitwise_not(mask)
+    im2_bg = cv2.bitwise_and(im2, im2, mask=mask_inv)
+    im1_fg = cv2.bitwise_and(im1, im1, mask=mask)
+    res = cv2.add(im2_bg, im1_fg)
+    return res
+
+def diff(im1, im2):
     df = cv2.absdiff(im1, im2)
-    mask = cv2.cvtColor(df, cv2.COLOR_BGR2GRAY)
-    imask = mask > th
-    canvas = np.zeros_like(im1, np.uint8)
-    canvas[imask] = im1[imask]
+    df_gray = cv2.cvtColor(df, cv2.COLOR_BGR2GRAY)
+    return df_gray
+
+def extract_foreground(full_image, background, threshold):
+    mask = diff(full_image, background)
+    imask = mask > threshold
+    canvas = np.zeros_like(full_image, np.uint8)
+    canvas[imask] = full_image[imask]
     return canvas
 
 def diff_score(im1, im2):
@@ -25,7 +37,7 @@ def diff_optimize(im1, im2):
     thresh = 0
     best_score = (thresh, np.inf)
     while thresh < 25:
-        foreground = diff(im1, im2, thresh)
+        foreground = extract_foreground(im1, im2, thresh)
         re_added = add(foreground, im2)
         score = diff_score(im1, re_added)
         print(score)

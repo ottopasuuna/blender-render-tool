@@ -1,8 +1,7 @@
 #! /bin/env python
 import argparse
 import cv2
-from diff import diff,  diff_optimize
-from add import add
+from common_ops import add, extract_foreground, diff
 
 def show_img(img):
     while True:
@@ -21,22 +20,18 @@ def save_image(img, path):
 def call_diff(args):
     im1 = load_image(args.image1)
     im2 = load_image(args.image2)
-    if args.optimize:
-        res = diff_optimize(im1, im2)
-        print(res[0])
+    res = diff(im1, im2)
+    if args.output:
+        save_image(res, args.output)
     else:
-        res = diff(im1, im2, args.threshold)
-        if args.output:
-            save_image(res, args.output)
-        else:
-            show_img(res)
+        show_img(res)
 
 def call_add_clutter(args):
     bg_with_clutter = load_image(args.bg_with_clutter)
     bg = load_image(args.background)
     bg_with_subject = load_image(args.bg_with_subject)
     # clutter = diff(bg_with_clutter, bg, 1)
-    subject = diff(bg_with_subject, bg, args.threshold)
+    subject = extract_foreground(bg_with_subject, bg, args.threshold)
     merged = add(subject, bg_with_clutter)
     if args.output:
         save_image(merged, args.output)
@@ -52,6 +47,16 @@ def call_add(args):
     else:
         show_img(res)
 
+def call_extract_foreground(args):
+    full_image = load_image(args.full_image)
+    background = load_image(args.background)
+    foreground = extract_foreground(full_image, background, args.threshold)
+    if args.output:
+        save_image(foreground, args.output)
+    else:
+        show_img(foreground)
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
     subparsers = parser.add_subparsers()
@@ -63,10 +68,6 @@ def parse_arguments():
     diff_parser.add_argument('image2', type=str,
                              help='The image with just the background.')
     diff_parser.add_argument('-o', '--output')
-    diff_parser.add_argument('-t', '--threshold', default=1, type=int,
-                             help='Threshold value to use during diff.')
-    diff_parser.add_argument('--optimize', action='store_true',
-                             help='Attempt to optimize the threshold value.')
     diff_parser.set_defaults(func=call_diff)
 
     # Image Add
@@ -77,14 +78,30 @@ def parse_arguments():
     add_parser.set_defaults(func=call_add)
 
     # Add clutter
+    # TODO: Support multiple bg_with_subject
     add_clutter_parser = subparsers.add_parser('add-clutter', help='Add background object details to a frame')
-    add_clutter_parser.add_argument('bg_with_clutter', type=str)
-    add_clutter_parser.add_argument('background', type=str)
-    add_clutter_parser.add_argument('bg_with_subject', type=str)
+    add_clutter_parser.add_argument('bg_with_clutter', type=str,
+            help='Image with all background items or "clutter".')
+    add_clutter_parser.add_argument('background', type=str,
+            help='Image of just the background')
+    add_clutter_parser.add_argument('bg_with_subject', type=str,
+            help='Image of the background with the subject')
     add_clutter_parser.add_argument('-t', '--threshold', default=8, type=int,
                              help='Threshold value to use during subject extraction.')
     add_clutter_parser.add_argument('-o', '--output')
     add_clutter_parser.set_defaults(func=call_add_clutter)
+
+    # Extract foreground
+    extract_foreground_parser = subparsers.add_parser('extract-foreground',
+            help='Extract the foreground items from a background')
+    extract_foreground_parser.add_argument('full_image', type=str,
+                             help='The image with all the items in it.')
+    extract_foreground_parser.add_argument('background', type=str,
+                             help='The image with just the background.')
+    extract_foreground_parser.add_argument('-t', '--threshold', default=1, type=int,
+                             help='Threshold value to use during foreground extraction.')
+    extract_foreground_parser.add_argument('-o', '--output')
+    extract_foreground_parser.set_defaults(func=call_extract_foreground)
 
     args = parser.parse_args()
 
