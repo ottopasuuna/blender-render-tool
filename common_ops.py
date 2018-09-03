@@ -84,3 +84,13 @@ def scale(img, width, height, mode):
     scaled_img = cv2.resize(img, (width, height), interpolation=interp)
     return scaled_img
 
+def denoise(img, strength, mode='fastNL'):
+    if mode == 'fastNL':
+        strength_color = strength
+        templateWindowSize = 7
+        searchWindowSize = 35
+        res = cv2.fastNlMeansDenoisingColored(img, None, strength, strength_color,
+                                              templateWindowSize, searchWindowSize)
+    elif mode == 'median':
+        res = cv2.medianBlur(img, 25)
+    return res

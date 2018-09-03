@@ -5,7 +5,7 @@ import argparse
 import cv2
 
 from common_ops import (add, extract_foreground, diff, blend_all,
-                        interpolate_flow, scale)
+                        interpolate_flow, scale, denoise)
 
 def make_dir(path):
     if not os.path.exists(path):
@@ -112,6 +112,19 @@ def call_scale(args):
         else:
             show_img(res)
 
+def call_denoise(args):
+    images = [(load_image(path), path) for path in args.images]
+    for (img, path) in images:
+        res = denoise(img, args.strength, args.mode)
+        if args.output:
+            if os.path.isdir(args.output):
+                save_image(res, os.path.join(args.output, os.path.basename(path)))
+            else:
+                save_image(res, args.output)
+        else:
+            show_img(res)
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
     subparsers = parser.add_subparsers()
@@ -175,7 +188,6 @@ def parse_arguments():
 
     # Image scaling
     scale_parser = subparsers.add_parser('scale', help='Resize frames')
-    # scale_parser.add_argument('image', type=str)
     scale_parser.add_argument('images', nargs='+', type=str)
     scale_parser.add_argument('-m', '--mode', default='lanczos',
             help='Interpolation mode to use when resizing.')
@@ -185,6 +197,16 @@ def parse_arguments():
     scale_parser.add_argument('--height', type=int)
     scale_parser.add_argument('-o', '--output')
     scale_parser.set_defaults(func=call_scale)
+
+    # Image denoising
+    denoise_parser = subparsers.add_parser('denoise', help='Denoise images')
+    denoise_parser.add_argument('images', nargs='+', type=str)
+    denoise_parser.add_argument('-s', '--strength', default=5, type=int,
+            help='The strength of the filter')
+    denoise_parser.add_argument('-m', '--mode', default='fastNL')
+    denoise_parser.add_argument('-o', '--output')
+    denoise_parser.set_defaults(func=call_denoise)
+
 
     args = parser.parse_args()
 
