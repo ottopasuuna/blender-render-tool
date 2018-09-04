@@ -10,6 +10,17 @@ def add(im1, im2):
     res = cv2.add(im2_bg, im1_fg)
     return res
 
+def transparentOverlay(overlay , background):
+    background = background[:,:,:3]
+    out = np.zeros(background.shape, background.dtype)
+    a = overlay[:,:,3]
+    overlay = overlay[:,:,:3]
+    alpha = a/255
+    alpha_inv = 1-alpha
+    for ch in range(3):
+        out[:,:,ch] = alpha*overlay[:,:,ch] + alpha_inv*background[:,:,ch]
+    return out
+
 def diff(im1, im2):
     df = cv2.absdiff(im1, im2)
     df_gray = cv2.cvtColor(df, cv2.COLOR_BGR2GRAY)
@@ -92,5 +103,15 @@ def denoise(img, strength, mode='fastNL'):
         res = cv2.fastNlMeansDenoisingColored(img, None, strength, strength_color,
                                               templateWindowSize, searchWindowSize)
     elif mode == 'median':
-        res = cv2.medianBlur(img, 25)
+        res = cv2.medianBlur(img, 5)
     return res
+
+def add_noise(img):
+    mean = 0
+    sigma = 20
+    m = (mean,mean,mean)
+    s = (sigma,sigma,sigma)
+    im = np.zeros(img.shape, np.uint8)
+    im = cv2.randn(im, m, s)
+    noisy = img + im
+    return noisy

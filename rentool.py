@@ -5,7 +5,8 @@ import argparse
 import cv2
 
 from common_ops import (add, extract_foreground, diff, blend_all,
-                        interpolate_flow, scale, denoise)
+                        interpolate_flow, scale, denoise, add_noise)
+from common_ops import transparentOverlay
 
 def make_dir(path):
     if not os.path.exists(path):
@@ -20,7 +21,7 @@ def show_img(img):
 
 def load_image(path):
     '''Just an alias for imread'''
-    return cv2.imread(path)
+    return cv2.imread(path, cv2.IMREAD_UNCHANGED)
 
 def save_image(img, path):
     cv2.imwrite(path, img)
@@ -34,17 +35,12 @@ def call_diff(args):
     else:
         show_img(res)
 
-def call_add_clutter(args):
-    bg_with_clutter = load_image(args.bg_with_clutter)
+def call_add_subjects(args):
     bg = load_image(args.background)
-    num_subject_imgs = len(args.bg_with_subject)
-    bg_with_subjects = [(load_image(path), path) for path in args.bg_with_subject]
-    # bg_with_subject = load_image(args.bg_with_subject)
-    # clutter = diff(bg_with_clutter, bg, 1)
-    make_dir(args.output)
-    for (bg_with_subject, path) in bg_with_subjects:
-        subject = extract_foreground(bg_with_subject, bg, args.threshold)
-        merged = add(subject, bg_with_clutter)
+    num_subject_imgs = len(args.subjects)
+    subjects = [(load_image(path), path) for path in args.subjects]
+    for (subject, path) in subjects:
+        merged = transparentOverlay(subject, bg)
         if args.output:
             out_path = os.path.join(args.output, os.path.basename(path)) if num_subject_imgs>1 else args.output
             save_image(merged, out_path)
@@ -54,7 +50,7 @@ def call_add_clutter(args):
 def call_add(args):
     im1 = load_image(args.image1)
     im2 = load_image(args.image2)
-    res = add(im1, im2)
+    res = transparentOverlay(im1, im2)
     if args.output:
         save_image(res, args.output)
     else:
@@ -97,7 +93,6 @@ def call_interpolate(args):
 
 def call_scale(args):
     images = [(load_image(path), path) for path in args.images]
-    # img = load_image(args.image)
     for (img, path) in images:
         if args.percent:
             height, width = int(img.shape[0]*args.percent), int(img.shape[1]*args.percent)
@@ -124,6 +119,14 @@ def call_denoise(args):
         else:
             show_img(res)
 
+def call_test(args):
+    image = load_image(args.image)
+    res = add_noise(image)
+    if args.output:
+        save_image(res, args.output)
+    else:
+        show_img(res)
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
@@ -145,18 +148,14 @@ def parse_arguments():
     add_parser.add_argument('-o', '--output', required=False)
     add_parser.set_defaults(func=call_add)
 
-    # Add clutter
-    add_clutter_parser = subparsers.add_parser('add-clutter', help='Add background object details to a frame')
-    add_clutter_parser.add_argument('bg_with_clutter', type=str,
-            help='Image with all background items or "clutter".')
-    add_clutter_parser.add_argument('background', type=str,
-            help='Image of just the background')
-    add_clutter_parser.add_argument('bg_with_subject', type=str, nargs='+',
-            help='Image(s) of the background with the subject')
-    add_clutter_parser.add_argument('-t', '--threshold', default=8, type=int,
-                             help='Threshold value to use during subject extraction.')
-    add_clutter_parser.add_argument('-o', '--output')
-    add_clutter_parser.set_defaults(func=call_add_clutter)
+    # Add subjects
+    add_subjects_parser = subparsers.add_parser('add-subjects', help='Add subject frames to static background')
+    add_subjects_parser.add_argument('background', type=str,
+            help='Image of the background')
+    add_subjects_parser.add_argument('subjects', type=str, nargs='+',
+            help='Image(s) of just the subject, transparent everywhere else')
+    add_subjects_parser.add_argument('-o', '--output')
+    add_subjects_parser.set_defaults(func=call_add_subjects)
 
     # Extract foreground
     extract_foreground_parser = subparsers.add_parser('extract-foreground',
@@ -206,6 +205,12 @@ def parse_arguments():
     denoise_parser.add_argument('-m', '--mode', default='fastNL')
     denoise_parser.add_argument('-o', '--output')
     denoise_parser.set_defaults(func=call_denoise)
+
+    # Misc parser for testing
+    test_parser = subparsers.add_parser('test', help='Misc for testing, dont use')
+    test_parser.add_argument('image', type=str)
+    test_parser.add_argument('-o', '--output')
+    test_parser.set_defaults(func=call_test)
 
 
     args = parser.parse_args()
