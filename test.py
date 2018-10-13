@@ -51,7 +51,10 @@ def test_interpolation():
     raise NotImplementedError()
 
 def test_add_noise():
-    raise NotImplementedError()
+    orig = load_image('test_imgs/walk_anim_background.png')
+    noisy = add_noise(orig)
+    expected = load_image('test_imgs/background_added_noise.png')
+    assert noisy.all() == expected.all()
 
 def test_diff():
     raise NotImplementedError()
