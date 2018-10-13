@@ -47,8 +47,12 @@ def test_scale():
     expected = load_image('test_imgs/scaled_double.png')
     assert scaled.all() == expected.all()
 
-def test_interpolation():
-    raise NotImplementedError()
+def test_interpolation_flow():
+    frame1 = load_image('test_imgs/walk_anim_expected/0001.png')
+    frame3 = load_image('test_imgs/walk_anim_expected/0003.png')
+    frame2 = interpolate_flow(frame1, frame3)
+    expected = load_image('test_imgs/walk_anim_expected/0002.png')
+    assert frame2.all() == expected.all()
 
 def test_add_noise():
     orig = load_image('test_imgs/walk_anim_background.png')
