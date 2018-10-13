@@ -40,7 +40,12 @@ def test_denoise():
     assert median.all() == expected.all()
 
 def test_scale():
-    raise NotImplementedError()
+    orig = load_image('test_imgs/walk_anim_expected/0001.png')
+    orig_height, orig_width = orig.shape[0], orig.shape[1]
+    scale_height, scale_width = 2*orig_height, 2*orig_width
+    scaled = scale(orig, scale_width, scale_height, mode='lanczos')
+    expected = load_image('test_imgs/scaled_double.png')
+    assert scaled.all() == expected.all()
 
 def test_interpolation():
     raise NotImplementedError()
