@@ -61,4 +61,8 @@ def test_add_noise():
     assert noisy.all() == expected.all()
 
 def test_diff():
-    raise NotImplementedError()
+    img1 = load_image('test_imgs/walk_anim_expected/0001.png')
+    img2 = load_image('test_imgs/walk_anim_expected/0002.png')
+    res = diff(img1, img2)
+    expected = load_image('test_imgs/walk_anim_diff.png')
+    assert res.all() == expected.all()
