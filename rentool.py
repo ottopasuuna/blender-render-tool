@@ -11,12 +11,14 @@ from common_ops import (add, extract_foreground, diff, blend_all,
 
 NUM_CORES = cpu_count()
 
+
 def parallelize(func, params_list):
     with Pool(processes=NUM_CORES) as pool:
         results_async = [pool.apply_async(func, params)
                          for params in params_list]
         results = [res.get() for res in results_async]
     return results
+
 
 def make_dir(path):
     if not os.path.exists(path):
@@ -57,6 +59,7 @@ def load_images(paths):
 def save_image(img, path):
     cv2.imwrite(path, img)
 
+
 def save_or_show(img, path):
     if path:
         save_image(img, path)
@@ -69,9 +72,10 @@ def output_to_basenames(input_paths, images, output_path):
     if len(images) > 1:
         if output_path:
             make_dir(output_path)
-            out_paths = [os.path.join(output_path, basename) for basename in file_basenames]
+            out_paths = [os.path.join(output_path, basename)
+                         for basename in file_basenames]
         else:
-            out_paths = [None]*len(images)
+            out_paths = [None] * len(images)
     else:
         out_paths = [output_path]
     for (img, path) in zip(images, out_paths):
@@ -101,11 +105,13 @@ def call_add(args):
     else:
         show_img(res)
 
+
 def call_extract_foreground(args):
     full_image = load_image(args.full_image)
     background = load_image(args.background)
     foreground = extract_foreground(full_image, background, args.threshold)
     save_or_show(foreground, args.output)
+
 
 def call_blend(args):
     images = [load_image(img) for img in args.images]
@@ -138,8 +144,8 @@ def call_interpolate(args):
     path_groups = []
     while curr < end:
         frame1 = os.path.join(parent_dir, name_format.format(curr))
-        frame3 = os.path.join(parent_dir, name_format.format(curr+step))
-        to_interp = name_format.format(curr + step//2)
+        frame3 = os.path.join(parent_dir, name_format.format(curr + step))
+        to_interp = name_format.format(curr + step // 2)
         path_groups.append((frame1, to_interp, frame3, interp_func))
         curr += step
 
@@ -154,12 +160,14 @@ def call_scale(args):
     images = load_images(args.images)
     template = images[0]
     if args.percent:
-        height, width = int(template.shape[0]*args.percent), int(template.shape[1]*args.percent)
+        height, width = int(
+            template.shape[0] * args.percent), int(template.shape[1] * args.percent)
     else:
         width, height = args.width, args.height
     params = [(img, width, height, args.mode) for img in images]
     scaled = parallelize(scale, params)
     output_to_basenames(args.images, scaled, output_path)
+
 
 def call_denoise(args):
     images = [load_image(path) for path in args.images]
@@ -177,11 +185,13 @@ def call_test(args):
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
+    parser = argparse.ArgumentParser(
+        description='Multitool for post processing blender renders.')
     subparsers = parser.add_subparsers()
 
     # Image diff
-    diff_parser = subparsers.add_parser('diff', help='calculate difference between two images.')
+    diff_parser = subparsers.add_parser(
+        'diff', help='calculate difference between two images.')
     diff_parser.add_argument('image1', type=str,
                              help='The image with all the items in it.')
     diff_parser.add_argument('image2', type=str,
@@ -197,23 +207,24 @@ def parse_arguments():
     add_parser.set_defaults(func=call_add)
 
     # Add subjects
-    add_subjects_parser = subparsers.add_parser('add-subjects', help='Add subject frames to static background')
+    add_subjects_parser = subparsers.add_parser(
+        'add-subjects', help='Add subject frames to static background')
     add_subjects_parser.add_argument('background', type=str,
-            help='Image of the background')
+                                     help='Image of the background')
     add_subjects_parser.add_argument('subjects', type=str, nargs='+',
-            help='Image(s) of just the subject, transparent everywhere else')
+                                     help='Image(s) of just the subject, transparent everywhere else')
     add_subjects_parser.add_argument('-o', '--output')
     add_subjects_parser.set_defaults(func=call_add_subjects)
 
     # Extract foreground
     extract_foreground_parser = subparsers.add_parser('extract-foreground',
-            help='Extract the foreground items from a background')
+                                                      help='Extract the foreground items from a background')
     extract_foreground_parser.add_argument('full_image', type=str,
-                             help='The image with all the items in it.')
+                                           help='The image with all the items in it.')
     extract_foreground_parser.add_argument('background', type=str,
-                             help='The image with just the background.')
+                                           help='The image with just the background.')
     extract_foreground_parser.add_argument('-t', '--threshold', default=1, type=int,
-                             help='Threshold value to use during foreground extraction.')
+                                           help='Threshold value to use during foreground extraction.')
     extract_foreground_parser.add_argument('-o', '--output')
     extract_foreground_parser.set_defaults(func=call_extract_foreground)
 
@@ -224,7 +235,8 @@ def parse_arguments():
     blend_parser.set_defaults(func=call_blend)
 
     # Frame interpolation
-    interp_parser = subparsers.add_parser('interpolate', help='Interpolate frames')
+    interp_parser = subparsers.add_parser(
+        'interpolate', help='Interpolate frames')
     interp_parser.add_argument('frame_dir', type=str)
     interp_parser.add_argument('-s', '--start', required=True, type=int)
     interp_parser.add_argument('-e', '--end', required=True, type=int)
@@ -237,9 +249,9 @@ def parse_arguments():
     scale_parser = subparsers.add_parser('scale', help='Resize frames')
     scale_parser.add_argument('images', nargs='+', type=str)
     scale_parser.add_argument('-m', '--mode', default='lanczos',
-            help='Interpolation mode to use when resizing.')
+                              help='Interpolation mode to use when resizing.')
     scale_parser.add_argument('-p', '--percent', type=float,
-            help=('Percentage change as a float'))
+                              help=('Percentage change as a float'))
     scale_parser.add_argument('--width', type=int)
     scale_parser.add_argument('--height', type=int)
     scale_parser.add_argument('-o', '--output')
@@ -249,22 +261,24 @@ def parse_arguments():
     denoise_parser = subparsers.add_parser('denoise', help='Denoise images')
     denoise_parser.add_argument('images', nargs='+', type=str)
     denoise_parser.add_argument('-s', '--strength', default=5, type=int,
-            help='The strength of the filter')
+                                help='The strength of the filter')
     denoise_parser.add_argument('-m', '--mode', default='fastNL')
     denoise_parser.add_argument('-o', '--output')
     denoise_parser.set_defaults(func=call_denoise)
 
     # Misc parser for testing
-    test_parser = subparsers.add_parser('test', help='Misc for testing, dont use')
+    test_parser = subparsers.add_parser(
+        'test', help='Misc for testing, dont use')
     test_parser.add_argument('image', type=str)
     test_parser.add_argument('-o', '--output')
     test_parser.set_defaults(func=call_test)
 
-
     args = parser.parse_args()
 
-    if args:
+    try:
         args.func(args)
+    except AttributeError as e:
+        parser.print_help()
 
 
 if __name__ == '__main__':
