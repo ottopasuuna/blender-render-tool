@@ -11,6 +11,7 @@ from common_ops import (add, extract_foreground, diff, blend_all,
 
 NUM_CORES = cpu_count()
 
+
 def parallelize(func, params_list):
     with Pool(processes=NUM_CORES) as pool:
         results_async = [pool.apply_async(func, params)
@@ -18,9 +19,11 @@ def parallelize(func, params_list):
         results = [res.get() for res in results_async]
     return results
 
+
 def make_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
+
 
 def get_paths(path):
     if isinstance(path, str):
@@ -34,6 +37,7 @@ def get_paths(path):
     else:
         return path
 
+
 def show_img(img):
     while True:
         cv2.imshow('img', img)
@@ -41,21 +45,26 @@ def show_img(img):
         if k == ord('q'):
             break
 
+
 def show_images(imgs):
     for img in imgs:
         show_img(img)
 
+
 def load_image(path):
     '''Just an alias for imread'''
     return cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
 
 def load_images(paths):
     paths = get_paths(paths)
     imgs = [load_image(path) for path in paths]
     return imgs
 
+
 def save_image(img, path):
     cv2.imwrite(path, img)
+
 
 def save_or_show(img, path):
     if path:
@@ -63,19 +72,22 @@ def save_or_show(img, path):
     else:
         show_img(img)
 
+
 def output_to_basenames(input_paths, images, output_path):
     assert len(input_paths) == len(images)
     file_basenames = [os.path.basename(path) for path in input_paths]
     if len(images) > 1:
         if output_path:
             make_dir(output_path)
-            out_paths = [os.path.join(output_path, basename) for basename in file_basenames]
+            out_paths = [os.path.join(output_path, basename)
+                         for basename in file_basenames]
         else:
-            out_paths = [None]*len(images)
+            out_paths = [None] * len(images)
     else:
         out_paths = [output_path]
     for (img, path) in zip(images, out_paths):
         save_or_show(img, path)
+
 
 def call_diff(args):
     im1, im2 = load_images([args.image1, args.image2])
@@ -116,11 +128,13 @@ def call_blend(args):
     res = blend_all(images)
     save_or_show(res, args.output)
 
+
 def _interp(path1, name_2, path3, func):
     frame1 = load_image(path1)
     frame3 = load_image(path3)
     frame2 = func(frame1, frame3)
     return (frame2, name_2)
+
 
 def call_interpolate(args):
     name_format = args.format
@@ -142,8 +156,8 @@ def call_interpolate(args):
     path_groups = []
     while curr < end:
         frame1 = os.path.join(parent_dir, name_format.format(curr))
-        frame3 = os.path.join(parent_dir, name_format.format(curr+step))
-        to_interp = name_format.format(curr + step//2)
+        frame3 = os.path.join(parent_dir, name_format.format(curr + step))
+        to_interp = name_format.format(curr + step // 2)
         path_groups.append((frame1, to_interp, frame3, interp_func))
         curr += step
 
@@ -158,7 +172,8 @@ def call_scale(args):
     images = load_images(args.images)
     template = images[0]
     if args.percent:
-        height, width = int(template.shape[0]*args.percent), int(template.shape[1]*args.percent)
+        height, width = int(
+            template.shape[0] * args.percent), int(template.shape[1] * args.percent)
     else:
         width, height = args.width, args.height
     params = [(img, width, height, args.mode) for img in images]
