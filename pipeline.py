@@ -81,10 +81,9 @@ def run_pipeline(args):
     if pipeline[0][0] != 'load':
         raise RuntimeError('First line must be load.')
 
-    print(pipeline)
     images = None
     for step in pipeline:
         args = parse_args(step)
-        print(args)
+        print(step[0])
         images = args.func(args, images)
 
