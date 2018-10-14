@@ -13,6 +13,17 @@ def make_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
+def get_paths(path):
+    if isinstance(path, str):
+        if os.path.isdir(path):
+            paths = os.listdir(path)
+        elif os.path.isfile(path):
+            paths = [paths]
+        else:
+            raise os.FileNotFoundError('Specified path(s) does not exist')
+        return paths
+    else:
+        return path
 
 def show_img(img):
     while True:
@@ -21,38 +32,56 @@ def show_img(img):
         if k == ord('q'):
             break
 
+def show_images(imgs):
+    for img in imgs:
+        show_img(img)
 
 def load_image(path):
     '''Just an alias for imread'''
     return cv2.imread(path, cv2.IMREAD_UNCHANGED)
 
+def load_images(paths):
+    paths = get_paths(paths)
+    imgs = [load_image(path) for path in paths]
+    return imgs
 
 def save_image(img, path):
     cv2.imwrite(path, img)
 
+def save_or_show(img, path):
+    if path:
+        save_image(img, path)
+    else:
+        show_img(img)
+
+def output_to_basenames(input_paths, images, output_path):
+    assert len(input_paths) == len(images)
+    file_basenames = [os.path.basename(path) for path in input_paths]
+    if len(images) > 1:
+        if output_path:
+            make_dir(output_path)
+            out_paths = [os.path.join(output_path, basename) for basename in file_basenames]
+        else:
+            out_paths = [None]*len(images)
+    else:
+        out_paths = [output_path]
+    for (img, path) in zip(images, out_paths):
+        save_or_show(img, path)
 
 def call_diff(args):
-    im1 = load_image(args.image1)
-    im2 = load_image(args.image2)
+    im1, im2 = load_images([args.image1, args.image2])
     res = diff(im1, im2)
-    if args.output:
-        save_image(res, args.output)
-    else:
-        show_img(res)
+    save_or_show(res, args.output)
 
 
 def call_add_subjects(args):
-    bg = load_image(args.background)
-    num_subject_imgs = len(args.subjects)
-    subjects = [(load_image(path), path) for path in args.subjects]
-    for (subject, path) in subjects:
-        merged = transparentOverlay(subject, bg)
-        if args.output:
-            out_path = os.path.join(args.output, os.path.basename(
-                path)) if num_subject_imgs > 1 else args.output
-            save_image(merged, out_path)
-        else:
-            show_img(merged)
+    subject_paths = get_paths(args.subjects)
+    output_path = args.output
+    bg_path = args.background
+    bg = load_image(bg_path)
+    subject_imgs = load_images(subject_paths)
+    merged = [transparentOverlay(subject, bg) for subject in subject_imgs]
+    output_to_basenames(subject_paths, merged, output_path)
 
 
 def call_add(args):
@@ -78,10 +107,7 @@ def call_extract_foreground(args):
 def call_blend(args):
     images = [load_image(img) for img in args.images]
     res = blend_all(images)
-    if args.output:
-        save_image(res, args.output)
-    else:
-        show_img(res)
+    save_or_show(res, args.output)
 
 
 def call_interpolate(args):
@@ -107,36 +133,21 @@ def call_interpolate(args):
 
 
 def call_scale(args):
-    images = [(load_image(path), path) for path in args.images]
-    for (img, path) in images:
-        if args.percent:
-            height, width = int(
-                img.shape[0] * args.percent), int(img.shape[1] * args.percent)
-        else:
-            width, height = args.width, args.height
-        res = scale(img, width, height, args.mode)
-        if args.output:
-            if os.path.isdir(args.output):
-                save_image(res, os.path.join(
-                    args.output, os.path.basename(path)))
-            else:
-                save_image(res, args.output)
-        else:
-            show_img(res)
+    output_path = args.output
+    images = load_images(args.images)
+    template = images[0]
+    if args.percent:
+        height, width = int(template.shape[0]*args.percent), int(template.shape[1]*args.percent)
+    else:
+        width, height = args.width, args.height
+    scaled = [scale(img, width, height, args.mode) for img in images]
+    output_to_basenames(args.images, scaled, output_path)
 
 
 def call_denoise(args):
-    images = [(load_image(path), path) for path in args.images]
-    for (img, path) in images:
-        res = denoise(img, args.strength, args.mode)
-        if args.output:
-            if os.path.isdir(args.output):
-                save_image(res, os.path.join(
-                    args.output, os.path.basename(path)))
-            else:
-                save_image(res, args.output)
-        else:
-            show_img(res)
+    images = [load_image(path) for path in args.images]
+    denoised = [denoise(img, args.strength, args.mode) for img in images]
+    output_to_basenames(args.images, denoised, args.output)
 
 
 def call_test(args):
