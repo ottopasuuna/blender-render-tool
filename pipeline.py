@@ -2,7 +2,8 @@ import argparse
 import yaml
 
 from core import load_images, parallelize, load_image, save_images
-from common_ops import (transparentOverlay, interpolate_flow, blend)
+from common_ops import (transparentOverlay, interpolate_flow, blend,
+                        scale, denoise)
 
 
 def run_load_images(args, images):
@@ -45,6 +46,23 @@ def run_save_images(args, images):
     save_images(images, args.path)
 
 
+def run_scale(args, images):
+    template = images[0]
+    if args.percent:
+        height, width = int(template.shape[0]*args.percent), int(template.shape[1]*args.percent)
+    else:
+        width, height = args.width, args.height
+    params = [(img, width, height, args.mode) for img in images]
+    scaled = parallelize(scale, params)
+    return scaled
+
+
+def run_denoise(args, images):
+    params = [(img, args.strength, args.mode) for img in images]
+    denoised = parallelize(denoise, params)
+    return denoised
+
+
 def parse_args(args):
     parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
     subparsers = parser.add_subparsers()
@@ -67,6 +85,23 @@ def parse_args(args):
     interp_parser = subparsers.add_parser('interpolate', help='Interpolate frames')
     interp_parser.add_argument('-m', '--mode', default='flow')
     interp_parser.set_defaults(func=run_interpolate)
+
+    # Image scaling
+    scale_parser = subparsers.add_parser('scale', help='Resize frames')
+    scale_parser.add_argument('-m', '--mode', default='lanczos',
+            help='Interpolation mode to use when resizing.')
+    scale_parser.add_argument('-p', '--percent', type=float,
+            help=('Percentage change as a float'))
+    scale_parser.add_argument('--width', type=int)
+    scale_parser.add_argument('--height', type=int)
+    scale_parser.set_defaults(func=run_scale)
+
+    # Image denoising
+    denoise_parser = subparsers.add_parser('denoise', help='Denoise images')
+    denoise_parser.add_argument('-s', '--strength', default=5, type=int,
+            help='The strength of the filter')
+    denoise_parser.add_argument('-m', '--mode', default='fastNL')
+    denoise_parser.set_defaults(func=run_denoise)
 
     return parser.parse_args(args)
 
