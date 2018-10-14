@@ -1,13 +1,22 @@
 #! /bin/env python
 import os
 import argparse
+from multiprocessing import Pool, cpu_count
 
 import cv2
 
 from common_ops import (add, extract_foreground, diff, blend_all,
-                        interpolate_flow, scale, denoise, add_noise)
-from common_ops import transparentOverlay
+                        interpolate_flow, scale, denoise, add_noise,
+                        blend, transparentOverlay)
 
+NUM_CORES = cpu_count()
+
+def parallelize(func, params_list):
+    with Pool(processes=NUM_CORES) as pool:
+        results_async = [pool.apply_async(func, params)
+                         for params in params_list]
+        results = [res.get() for res in results_async]
+    return results
 
 def make_dir(path):
     if not os.path.exists(path):
@@ -80,7 +89,8 @@ def call_add_subjects(args):
     bg_path = args.background
     bg = load_image(bg_path)
     subject_imgs = load_images(subject_paths)
-    merged = [transparentOverlay(subject, bg) for subject in subject_imgs]
+    params = [(subject, bg) for subject in subject_imgs]
+    merged = parallelize(transparentOverlay, params)
     output_to_basenames(subject_paths, merged, output_path)
 
 
@@ -98,10 +108,7 @@ def call_extract_foreground(args):
     full_image = load_image(args.full_image)
     background = load_image(args.background)
     foreground = extract_foreground(full_image, background, args.threshold)
-    if args.output:
-        save_image(foreground, args.output)
-    else:
-        show_img(foreground)
+    save_or_show(foreground, args.output)
 
 
 def call_blend(args):
@@ -109,27 +116,41 @@ def call_blend(args):
     res = blend_all(images)
     save_or_show(res, args.output)
 
+def _interp(path1, name_2, path3, func):
+    frame1 = load_image(path1)
+    frame3 = load_image(path3)
+    frame2 = func(frame1, frame3)
+    return (frame2, name_2)
 
 def call_interpolate(args):
     name_format = args.format
+    parent_dir = args.frame_dir
     start, end = args.start, args.end
     assert(start < end)
     curr = start
     make_dir(args.output)
+
+    if args.mode == 'flow':
+        interp_func = interpolate_flow
+    elif args.mode == 'blend':
+        interp_func = blend
+    else:
+        raise ValueError('Invalid interpolation mode')
+
+    step = 2  # TODO: allow different step sizes, 4, 8...
+    # Grouping files to interpolate
+    path_groups = []
     while curr < end:
-        frame1 = load_image(os.path.join(
-            args.frame_dir, name_format.format(curr)))
-        frame3 = load_image(os.path.join(
-            args.frame_dir, name_format.format(curr + 2)))
-        if args.mode == 'flow':
-            frame2 = interpolate_flow(frame1, frame3)
-        elif args.mode == 'blend':
-            frame2 = blend_all([frame1, frame3])
-        else:
-            raise ValueError('Invalid interpolation mode')
-        save_image(frame2, os.path.join(
-            args.output, name_format.format(curr + 1)))
-        curr += 2
+        frame1 = os.path.join(parent_dir, name_format.format(curr))
+        frame3 = os.path.join(parent_dir, name_format.format(curr+step))
+        to_interp = name_format.format(curr + step//2)
+        path_groups.append((frame1, to_interp, frame3, interp_func))
+        curr += step
+
+    # Interpolation
+    interp_frames = parallelize(_interp, path_groups)
+    for (frame, name) in interp_frames:
+        save_image(frame, os.path.join(args.output, name))
 
 
 def call_scale(args):
@@ -140,13 +161,15 @@ def call_scale(args):
         height, width = int(template.shape[0]*args.percent), int(template.shape[1]*args.percent)
     else:
         width, height = args.width, args.height
-    scaled = [scale(img, width, height, args.mode) for img in images]
+    params = [(img, width, height, args.mode) for img in images]
+    scaled = parallelize(scale, params)
     output_to_basenames(args.images, scaled, output_path)
 
 
 def call_denoise(args):
     images = [load_image(path) for path in args.images]
-    denoised = [denoise(img, args.strength, args.mode) for img in images]
+    params = [(img, args.strength, args.mode) for img in images]
+    denoised = parallelize(denoise, params)
     output_to_basenames(args.images, denoised, args.output)
 
 
