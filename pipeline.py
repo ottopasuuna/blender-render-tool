@@ -43,7 +43,7 @@ def run_interpolate(args, images):
 
 
 def run_save_images(args, images):
-    save_images(images, args.path)
+    save_images(images, args.output)
 
 
 def run_scale(args, images):
@@ -72,7 +72,7 @@ def parse_args(args):
     load_images_parser.set_defaults(func=run_load_images)
 
     save_images_parser = subparsers.add_parser('save')
-    save_images_parser.add_argument('path')
+    save_images_parser.add_argument('output')
     save_images_parser.set_defaults(func=run_save_images)
 
     # Add subjects

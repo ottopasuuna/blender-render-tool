@@ -25,12 +25,21 @@ def get_paths(path):
             paths = os.listdir(path)
             paths = [os.path.join(path, p) for p in paths]
         elif os.path.isfile(path):
-            paths = [paths]
+            paths = [path]
         else:
-            raise os.FileNotFoundError('Specified path(s) does not exist')
-        return paths
+            raise RuntimeError('Specified path(s) does not exist')
+    elif len(path) == 1:
+        path = path[0]
+        if os.path.isdir(path):
+            paths = os.listdir(path)
+            paths = [os.path.join(path, p) for p in paths]
+        elif os.path.isfile(path):
+            paths = [path]
+        else:
+            raise RuntimeError('Specified path(s) does not exist')
     else:
-        return path
+        paths = path
+    return paths
 
 
 def show_img(img):
@@ -49,7 +58,7 @@ def show_images(imgs):
 def load_image(path):
     '''Just an alias for imread'''
     if not os.path.isfile(path):
-        raise os.FileNotFoundError('Specified path(s) does not exist')
+        raise RuntimeError('Specified path(s) does not exist')
     return cv2.imread(path, cv2.IMREAD_UNCHANGED)
 
 

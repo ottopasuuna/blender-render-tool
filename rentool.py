@@ -1,14 +1,14 @@
 #! /bin/env python
-import os
 import argparse
 
 from common_ops import (extract_foreground, diff, blend_all,
-                        interpolate_flow, scale, denoise, add_noise,
-                        blend, transparentOverlay)
-from core import (parallelize, make_dir, get_paths, show_img,
+                        add_noise)
+from core import (get_paths, show_img, save_images,
                   load_image, load_images, save_image,
                   save_or_show, output_to_basenames)
 import pipeline
+from pipeline import (run_subjects_pipe, run_scale, run_denoise,
+                      run_interpolate)
 
 
 def call_diff(args):
@@ -17,25 +17,11 @@ def call_diff(args):
     save_or_show(res, args.output)
 
 
-def call_add_subjects(args):
-    subject_paths = get_paths(args.subjects)
-    output_path = args.output
-    bg_path = args.background
-    bg = load_image(bg_path)
-    subject_imgs = load_images(subject_paths)
-    params = [(subject, bg) for subject in subject_imgs]
-    merged = parallelize(transparentOverlay, params)
-    output_to_basenames(subject_paths, merged, output_path)
-
-
-def call_add(args):
-    im1 = load_image(args.image1)
-    im2 = load_image(args.image2)
-    res = transparentOverlay(im1, im2)
-    if args.output:
-        save_image(res, args.output)
-    else:
-        show_img(res)
+def pipeline_wrapper(args):
+    paths = get_paths(args.images)
+    images = load_images(paths)
+    results = args.tool(args, images)
+    output_to_basenames(paths, results, args.output)
 
 
 def call_extract_foreground(args):
@@ -51,63 +37,10 @@ def call_blend(args):
     save_or_show(res, args.output)
 
 
-def _interp(path1, name_2, path3, func):
-    frame1 = load_image(path1)
-    frame3 = load_image(path3)
-    frame2 = func(frame1, frame3)
-    return (frame2, name_2)
-
-
 def call_interpolate(args):
-    name_format = args.format
-    parent_dir = args.frame_dir
-    start, end = args.start, args.end
-    assert(start < end)
-    curr = start
-    make_dir(args.output)
-
-    if args.mode == 'flow':
-        interp_func = interpolate_flow
-    elif args.mode == 'blend':
-        interp_func = blend
-    else:
-        raise ValueError('Invalid interpolation mode')
-
-    step = 2  # TODO: allow different step sizes, 4, 8...
-    # Grouping files to interpolate
-    path_groups = []
-    while curr < end:
-        frame1 = os.path.join(parent_dir, name_format.format(curr))
-        frame3 = os.path.join(parent_dir, name_format.format(curr + step))
-        to_interp = name_format.format(curr + step // 2)
-        path_groups.append((frame1, to_interp, frame3, interp_func))
-        curr += step
-
-    # Interpolation
-    interp_frames = parallelize(_interp, path_groups)
-    for (frame, name) in interp_frames:
-        save_image(frame, os.path.join(args.output, name))
-
-
-def call_scale(args):
-    output_path = args.output
     images = load_images(args.images)
-    template = images[0]
-    if args.percent:
-        height, width = int(
-            template.shape[0] * args.percent), int(template.shape[1] * args.percent)
-    else:
-        width, height = args.width, args.height
-    params = [(img, width, height, args.mode) for img in images]
-    scaled = parallelize(scale, params)
-    output_to_basenames(args.images, scaled, output_path)
-
-
-def call_denoise(args):
-    images = [load_image(path) for path in args.images]
-    params = [(img, args.strength, args.mode) for img in images]
-    denoised = parallelize(denoise, params)
-    output_to_basenames(args.images, denoised, args.output)
+    frames = run_interpolate(args, images)
+    save_images(frames, args.output)
 
 
 def call_test(args):
@@ -134,22 +67,16 @@ def parse_arguments(arguments=None):
     diff_parser.add_argument('-o', '--output')
     diff_parser.set_defaults(func=call_diff)
 
-    # Image Add
-    add_parser = subparsers.add_parser('add', help='Add two images together')
-    add_parser.add_argument('image1', type=str)
-    add_parser.add_argument('image2', type=str)
-    add_parser.add_argument('-o', '--output', required=False)
-    add_parser.set_defaults(func=call_add)
-
     # Add subjects
     add_subjects_parser = subparsers.add_parser(
         'add-subjects', help='Add subject frames to static background')
     add_subjects_parser.add_argument('background', type=str,
                                      help='Image of the background')
-    add_subjects_parser.add_argument('subjects', type=str, nargs='+',
+    add_subjects_parser.add_argument('images', type=str, nargs='+',
                                      help='Image(s) of just the subject, transparent everywhere else')
     add_subjects_parser.add_argument('-o', '--output')
-    add_subjects_parser.set_defaults(func=call_add_subjects)
+    add_subjects_parser.set_defaults(func=pipeline_wrapper,
+                                     tool=run_subjects_pipe)
 
     # Extract foreground
     extract_foreground_parser = subparsers.add_parser('extract-foreground',
@@ -172,9 +99,7 @@ def parse_arguments(arguments=None):
     # Frame interpolation
     interp_parser = subparsers.add_parser(
         'interpolate', help='Interpolate frames')
-    interp_parser.add_argument('frame_dir', type=str)
-    interp_parser.add_argument('-s', '--start', required=True, type=int)
-    interp_parser.add_argument('-e', '--end', required=True, type=int)
+    interp_parser.add_argument('images', type=str)
     interp_parser.add_argument('-o', '--output', default='interp_frames')
     interp_parser.add_argument('-f', '--format', default='{0:04d}.png')
     interp_parser.add_argument('-m', '--mode', default='flow')
@@ -190,7 +115,7 @@ def parse_arguments(arguments=None):
     scale_parser.add_argument('--width', type=int)
     scale_parser.add_argument('--height', type=int)
     scale_parser.add_argument('-o', '--output')
-    scale_parser.set_defaults(func=call_scale)
+    scale_parser.set_defaults(func=pipeline_wrapper, tool=run_scale)
 
     # Image denoising
     denoise_parser = subparsers.add_parser('denoise', help='Denoise images')
@@ -199,7 +124,7 @@ def parse_arguments(arguments=None):
                                 help='The strength of the filter')
     denoise_parser.add_argument('-m', '--mode', default='fastNL')
     denoise_parser.add_argument('-o', '--output')
-    denoise_parser.set_defaults(func=call_denoise)
+    denoise_parser.set_defaults(func=pipeline_wrapper, tool=run_denoise)
 
     # Misc parser for testing
     test_parser = subparsers.add_parser(
@@ -218,8 +143,7 @@ def parse_arguments(arguments=None):
 
 if __name__ == '__main__':
     args, parser = parse_arguments()
-    if args:
-        try:
-            args.func(args)
-        except AttributeError as e:
-            parser.print_help()
+    if args and hasattr(args, 'func'):
+        args.func(args)
+    else:
+        parser.print_help()
