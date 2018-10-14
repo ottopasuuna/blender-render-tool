@@ -10,10 +10,12 @@ from core import (parallelize, make_dir, get_paths, show_img,
                   save_or_show, output_to_basenames)
 import pipeline
 
+
 def call_diff(args):
     im1, im2 = load_images([args.image1, args.image2])
     res = diff(im1, im2)
     save_or_show(res, args.output)
+
 
 def call_add_subjects(args):
     subject_paths = get_paths(args.subjects)
@@ -25,6 +27,7 @@ def call_add_subjects(args):
     merged = parallelize(transparentOverlay, params)
     output_to_basenames(subject_paths, merged, output_path)
 
+
 def call_add(args):
     im1 = load_image(args.image1)
     im2 = load_image(args.image2)
@@ -34,22 +37,26 @@ def call_add(args):
     else:
         show_img(res)
 
+
 def call_extract_foreground(args):
     full_image = load_image(args.full_image)
     background = load_image(args.background)
     foreground = extract_foreground(full_image, background, args.threshold)
     save_or_show(foreground, args.output)
 
+
 def call_blend(args):
     images = [load_image(img) for img in args.images]
     res = blend_all(images)
     save_or_show(res, args.output)
+
 
 def _interp(path1, name_2, path3, func):
     frame1 = load_image(path1)
     frame3 = load_image(path3)
     frame2 = func(frame1, frame3)
     return (frame2, name_2)
+
 
 def call_interpolate(args):
     name_format = args.format
@@ -71,8 +78,8 @@ def call_interpolate(args):
     path_groups = []
     while curr < end:
         frame1 = os.path.join(parent_dir, name_format.format(curr))
-        frame3 = os.path.join(parent_dir, name_format.format(curr+step))
-        to_interp = name_format.format(curr + step//2)
+        frame3 = os.path.join(parent_dir, name_format.format(curr + step))
+        to_interp = name_format.format(curr + step // 2)
         path_groups.append((frame1, to_interp, frame3, interp_func))
         curr += step
 
@@ -87,18 +94,21 @@ def call_scale(args):
     images = load_images(args.images)
     template = images[0]
     if args.percent:
-        height, width = int(template.shape[0]*args.percent), int(template.shape[1]*args.percent)
+        height, width = int(
+            template.shape[0] * args.percent), int(template.shape[1] * args.percent)
     else:
         width, height = args.width, args.height
     params = [(img, width, height, args.mode) for img in images]
     scaled = parallelize(scale, params)
     output_to_basenames(args.images, scaled, output_path)
 
+
 def call_denoise(args):
     images = [load_image(path) for path in args.images]
     params = [(img, args.strength, args.mode) for img in images]
     denoised = parallelize(denoise, params)
     output_to_basenames(args.images, denoised, args.output)
+
 
 def call_test(args):
     image = load_image(args.image)
@@ -110,11 +120,13 @@ def call_test(args):
 
 
 def parse_arguments(arguments=None):
-    parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
+    parser = argparse.ArgumentParser(
+        description='Multitool for post processing blender renders.')
     subparsers = parser.add_subparsers()
 
     # Image diff
-    diff_parser = subparsers.add_parser('diff', help='calculate difference between two images.')
+    diff_parser = subparsers.add_parser(
+        'diff', help='calculate difference between two images.')
     diff_parser.add_argument('image1', type=str,
                              help='The image with all the items in it.')
     diff_parser.add_argument('image2', type=str,
@@ -130,23 +142,24 @@ def parse_arguments(arguments=None):
     add_parser.set_defaults(func=call_add)
 
     # Add subjects
-    add_subjects_parser = subparsers.add_parser('add-subjects', help='Add subject frames to static background')
+    add_subjects_parser = subparsers.add_parser(
+        'add-subjects', help='Add subject frames to static background')
     add_subjects_parser.add_argument('background', type=str,
-            help='Image of the background')
+                                     help='Image of the background')
     add_subjects_parser.add_argument('subjects', type=str, nargs='+',
-            help='Image(s) of just the subject, transparent everywhere else')
+                                     help='Image(s) of just the subject, transparent everywhere else')
     add_subjects_parser.add_argument('-o', '--output')
     add_subjects_parser.set_defaults(func=call_add_subjects)
 
     # Extract foreground
     extract_foreground_parser = subparsers.add_parser('extract-foreground',
-            help='Extract the foreground items from a background')
+                                                      help='Extract the foreground items from a background')
     extract_foreground_parser.add_argument('full_image', type=str,
-                             help='The image with all the items in it.')
+                                           help='The image with all the items in it.')
     extract_foreground_parser.add_argument('background', type=str,
-                             help='The image with just the background.')
+                                           help='The image with just the background.')
     extract_foreground_parser.add_argument('-t', '--threshold', default=1, type=int,
-                             help='Threshold value to use during foreground extraction.')
+                                           help='Threshold value to use during foreground extraction.')
     extract_foreground_parser.add_argument('-o', '--output')
     extract_foreground_parser.set_defaults(func=call_extract_foreground)
 
@@ -157,7 +170,8 @@ def parse_arguments(arguments=None):
     blend_parser.set_defaults(func=call_blend)
 
     # Frame interpolation
-    interp_parser = subparsers.add_parser('interpolate', help='Interpolate frames')
+    interp_parser = subparsers.add_parser(
+        'interpolate', help='Interpolate frames')
     interp_parser.add_argument('frame_dir', type=str)
     interp_parser.add_argument('-s', '--start', required=True, type=int)
     interp_parser.add_argument('-e', '--end', required=True, type=int)
@@ -170,9 +184,9 @@ def parse_arguments(arguments=None):
     scale_parser = subparsers.add_parser('scale', help='Resize frames')
     scale_parser.add_argument('images', nargs='+', type=str)
     scale_parser.add_argument('-m', '--mode', default='lanczos',
-            help='Interpolation mode to use when resizing.')
+                              help='Interpolation mode to use when resizing.')
     scale_parser.add_argument('-p', '--percent', type=float,
-            help=('Percentage change as a float'))
+                              help=('Percentage change as a float'))
     scale_parser.add_argument('--width', type=int)
     scale_parser.add_argument('--height', type=int)
     scale_parser.add_argument('-o', '--output')
@@ -182,26 +196,30 @@ def parse_arguments(arguments=None):
     denoise_parser = subparsers.add_parser('denoise', help='Denoise images')
     denoise_parser.add_argument('images', nargs='+', type=str)
     denoise_parser.add_argument('-s', '--strength', default=5, type=int,
-            help='The strength of the filter')
+                                help='The strength of the filter')
     denoise_parser.add_argument('-m', '--mode', default='fastNL')
     denoise_parser.add_argument('-o', '--output')
     denoise_parser.set_defaults(func=call_denoise)
 
     # Misc parser for testing
-    test_parser = subparsers.add_parser('test', help='Misc for testing, dont use')
+    test_parser = subparsers.add_parser(
+        'test', help='Misc for testing, dont use')
     test_parser.add_argument('image', type=str)
     test_parser.add_argument('-o', '--output')
     test_parser.set_defaults(func=call_test)
 
     pipeline_parser = subparsers.add_parser('pipeline',
-            help='Read commands from a pipeline file')
+                                            help='Read commands from a pipeline file')
     pipeline_parser.add_argument('pipeline_file', type=str)
     pipeline_parser.set_defaults(func=pipeline.run_pipeline)
 
     args = parser.parse_args(arguments)
-    return args
+    return args, parser
 
 if __name__ == '__main__':
-    args = parse_arguments()
+    args, parser = parse_arguments()
     if args:
-        args.func(args)
+        try:
+            args.func(args)
+        except AttributeError as e:
+            parser.print_help()
