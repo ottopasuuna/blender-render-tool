@@ -24,7 +24,6 @@ def make_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
-
 def get_paths(path):
     if isinstance(path, str):
         if os.path.isdir(path):
@@ -37,7 +36,6 @@ def get_paths(path):
     else:
         return path
 
-
 def show_img(img):
     while True:
         cv2.imshow('img', img)
@@ -45,22 +43,18 @@ def show_img(img):
         if k == ord('q'):
             break
 
-
 def show_images(imgs):
     for img in imgs:
         show_img(img)
-
 
 def load_image(path):
     '''Just an alias for imread'''
     return cv2.imread(path, cv2.IMREAD_UNCHANGED)
 
-
 def load_images(paths):
     paths = get_paths(paths)
     imgs = [load_image(path) for path in paths]
     return imgs
-
 
 def save_image(img, path):
     cv2.imwrite(path, img)
@@ -71,7 +65,6 @@ def save_or_show(img, path):
         save_image(img, path)
     else:
         show_img(img)
-
 
 def output_to_basenames(input_paths, images, output_path):
     assert len(input_paths) == len(images)
@@ -88,12 +81,10 @@ def output_to_basenames(input_paths, images, output_path):
     for (img, path) in zip(images, out_paths):
         save_or_show(img, path)
 
-
 def call_diff(args):
     im1, im2 = load_images([args.image1, args.image2])
     res = diff(im1, im2)
     save_or_show(res, args.output)
-
 
 def call_add_subjects(args):
     subject_paths = get_paths(args.subjects)
@@ -101,10 +92,8 @@ def call_add_subjects(args):
     bg_path = args.background
     bg = load_image(bg_path)
     subject_imgs = load_images(subject_paths)
-    params = [(subject, bg) for subject in subject_imgs]
-    merged = parallelize(transparentOverlay, params)
+    merged = [transparentOverlay(subject, bg) for subject in subject_imgs]
     output_to_basenames(subject_paths, merged, output_path)
-
 
 def call_add(args):
     im1 = load_image(args.image1)
@@ -128,13 +117,11 @@ def call_blend(args):
     res = blend_all(images)
     save_or_show(res, args.output)
 
-
 def _interp(path1, name_2, path3, func):
     frame1 = load_image(path1)
     frame3 = load_image(path3)
     frame2 = func(frame1, frame3)
     return (frame2, name_2)
-
 
 def call_interpolate(args):
     name_format = args.format
@@ -186,7 +173,6 @@ def call_denoise(args):
     params = [(img, args.strength, args.mode) for img in images]
     denoised = parallelize(denoise, params)
     output_to_basenames(args.images, denoised, args.output)
-
 
 def call_test(args):
     image = load_image(args.image)
