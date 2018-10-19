@@ -1,9 +1,9 @@
 import argparse
 import yaml
 
-from core import load_images, save_images
+from .core import load_images, save_images
 
-from tools import (AddOverlayTool, InterpolateTool, ScaleTool,
+from .tools import (AddOverlayTool, InterpolateTool, ScaleTool,
                    DenoiseTool)
 
 

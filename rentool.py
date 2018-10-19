@@ -1,8 +1,8 @@
 #! /bin/env python
 import argparse
 
-import pipeline
-from tools import (AddOverlayTool, InterpolateTool, ScaleTool,
+from src.pipeline import run_pipeline
+from src.tools import (AddOverlayTool, InterpolateTool, ScaleTool,
                    DenoiseTool, AddNoiseTool, DiffTool, BlendTool,
                    ExtractForegroundTool)
 
@@ -21,7 +21,7 @@ def parse_arguments(arguments=None):
     pipeline_parser = subparsers.add_parser('pipeline',
                                             help='Read commands from a pipeline file')
     pipeline_parser.add_argument('pipeline_file', type=str)
-    pipeline_parser.set_defaults(func=pipeline.run_pipeline)
+    pipeline_parser.set_defaults(func=run_pipeline)
 
     args = parser.parse_args(arguments)
     return args, parser
