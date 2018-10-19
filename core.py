@@ -100,3 +100,10 @@ def output_to_basenames(input_paths, images, output_path):
         out_paths = [output_path]
     for (img, path) in zip(images, out_paths):
         save_or_show(img, path)
+
+
+def pipeline_wrapper(args):
+    paths = get_paths(args.images)
+    images = load_images(paths)
+    results = args.tool(args, images)
+    output_to_basenames(paths, results, args.output)
