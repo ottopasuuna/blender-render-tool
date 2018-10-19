@@ -1,7 +1,7 @@
 import shutil, os
 from common_ops import *
 
-from rentool import load_image, save_image
+from core import load_image, save_image
 
 def test_load_and_save():
     img = load_image('test_imgs/walk_anim_background.png')
