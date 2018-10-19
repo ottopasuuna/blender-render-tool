@@ -12,14 +12,11 @@ def parse_arguments(arguments=None):
         description='Multitool for post processing blender renders.')
     subparsers = parser.add_subparsers()
 
-    DiffTool.build_standalone_parser(subparsers)
-    AddOverlayTool.build_standalone_parser(subparsers)
-    InterpolateTool.build_standalone_parser(subparsers)
-    ScaleTool.build_standalone_parser(subparsers)
-    DenoiseTool.build_standalone_parser(subparsers)
-    AddNoiseTool.build_standalone_parser(subparsers)
-    BlendTool.build_standalone_parser(subparsers)
-    ExtractForegroundTool.build_standalone_parser(subparsers)
+    _tools = [AddOverlayTool, InterpolateTool, ScaleTool,
+              DenoiseTool, AddNoiseTool, DiffTool, BlendTool,
+              ExtractForegroundTool]
+    for tool in _tools:
+        tool.build_standalone_parser(subparsers)
 
     pipeline_parser = subparsers.add_parser('pipeline',
                                             help='Read commands from a pipeline file')
