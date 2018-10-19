@@ -26,7 +26,7 @@ class AddOverlayTool(Tool):
     def build_standalone_parser(cls, subparsers):
         overlay_parser = cls.build_pipeline_parser(subparsers)
         overlay_parser.add_argument('images', type=str, nargs='+',
-                                    help='Image(s) of just the subject, transparent everywhere else')
+                                    help='Image(s) of just the foreground, transparent everywhere else')
         overlay_parser.add_argument('-o', '--output')
         overlay_parser.set_defaults(func=pipeline_wrapper,
                                     tool=cls.run)
@@ -35,7 +35,7 @@ class AddOverlayTool(Tool):
     @classmethod
     def build_pipeline_parser(cls, subparsers):
         overlay_parser = subparsers.add_parser(
-            'add-subjects', help='Add transparent overlay frames to static background')
+            'add-overlay', help='Add transparent overlay frames to static background')
         overlay_parser.add_argument('background', type=str,
                 help='Image of the background')
         overlay_parser.set_defaults(func=AddOverlayTool.run)
@@ -161,13 +161,9 @@ class DenoiseTool(Tool):
 class AddNoiseTool(Tool):
 
     @classmethod
-    def build_pipeline_parser(cls, subparsers):
-        raise NotImplementedError
-
-    @classmethod
     def build_standalone_parser(cls, subparsers):
         addnoise_parser = subparsers.add_parser(
-            'test', help='Misc for testing, dont use')
+            'add-noise', help='Add noise to an image')
         addnoise_parser.add_argument('image', type=str)
         addnoise_parser.add_argument('-o', '--output')
         addnoise_parser.set_defaults(func=cls._run)
