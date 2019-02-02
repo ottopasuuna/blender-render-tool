@@ -240,6 +240,7 @@ class ExtractForegroundTool(Tool):
 
 
 from subprocess import Popen
+import subprocess
 import shlex
 import os
 
@@ -273,7 +274,7 @@ def blender(*args, **kwargs):
     return Popen(shlex.split(cmd))
 
 def copy_to_host(blend_file, host):
-    shell('scp {} {}:'.format(blend_file, host))
+    shell('scp -p {} {}:'.format(blend_file, host))
 
 def copy_results_from_host(host, output):
     shell('scp -r "{}:{}/*" ./{}'.format(host, output, output))
@@ -282,11 +283,25 @@ def cleanup_host(host, blend_file, output):
     # shell('ssh {} rm -r {} {}'.format(host, blend_file, output))
     shell('ssh {} rm -r {}'.format(host, output))
 
+import re
+def get_file_mod_date(file_name, host='localhost'):
+    # Not just using os.stat because it won't work on remote host
+    regex = re.compile(r'^Modify: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', re.MULTILINE)
+    cmd = 'stat {}'.format(file_name)
+    if host != 'localhost':
+        cmd = 'ssh {} "{}"'.format(host, cmd)
+    p = Popen(shlex.split(cmd), stdout=subprocess.PIPE)
+    std_out, std_err = p.communicate()
+    std_out = std_out.decode('utf-8')
+    match = regex.search(std_out)[0]
+    return match
+
 def remote_blender(host, *args, **kwargs):
     print('Host: {}'.format(host))
     print(kwargs)
     blend_file = kwargs['blend_file']
-    copy_to_host(blend_file, host)
+    if get_file_mod_date(blend_file, host=host) != get_file_mod_date(blend_file):
+        copy_to_host(blend_file, host)
     blend_cmd = build_blender(*args, **kwargs)
     cmd = 'ssh {} "{}"'.format(host, blend_cmd)
     return Popen(shlex.split(cmd))
@@ -327,23 +342,24 @@ class BlenderRender(Tool):
                                    help='Number of frames in the animation')
         render_parser.add_argument('-s', '--start_frame', type=int, default=1,
                                    help='Frame to start rendering from')
-        render_parser.add_argument('-e', '--end_frame', type=int, default=-1,
+        render_parser.add_argument('-e', '--end_frame', type=int,
                                    help='Frame to end rendering at')
         render_parser.add_argument('-d', '--distribute', type=str, nargs='+', default=['localhost'],
                                    help='Distribute work to another machine')
+        render_parser.add_argument('-j', '--jump', type=int, default=1,
+                                   help='Number of frames to skip.')
         render_parser.set_defaults(func=cls._run)
         return render_parser
 
     @classmethod
     def _run(cls, args):
-        if args.end_frame == -1:
-            end_frame = args.num_frames
+        if args.end_frame:
+            end_frame = min(args.num_frames, args.end_frame)
         else:
-            end_frame = min(args.end_frame, args.num_frames)
-        skip = 1
-        frames = range(args.start_frame, end_frame+1, skip)
+            end_frame = args.num_frames
+        frames = range(args.start_frame, end_frame+1, args.jump)
         frames_per_host = split_frames_per_host(frames, args.distribute)
-        print(frames_per_host)
+        print('Frames per host: {}'.format(frames_per_host))
 
         processes = []
         for host in args.distribute:
