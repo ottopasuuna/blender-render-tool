@@ -1,3 +1,5 @@
+from .blender import (split_frames_per_host, remote_blender, blender,
+                      copy_results_from_host, cleanup_host)
 from .core import (load_images, parallelize, load_image, save_images,
                   pipeline_wrapper, save_or_show)
 from .common_ops import (transparentOverlay, interpolate_flow, blend,
@@ -236,96 +238,6 @@ class ExtractForegroundTool(Tool):
         background = load_image(args.background)
         foreground = extract_foreground(full_image, background, args.threshold)
         save_or_show(foreground, args.output)
-
-
-
-from subprocess import Popen
-import subprocess
-import shlex
-import os
-
-def shell(cmd_str):
-    p = Popen(shlex.split(cmd_str))
-    p.wait()
-
-def build_frames(frames):
-    args = {}
-    if frames is not None:
-        args['frames'] = '-f ' + ','.join([str(f) for f in list(frames)])
-    else:
-        args['frames'] = ''
-    return args
-
-def build_output(path):
-    file_extension = 'png'
-    file_name_template = '####.{}'.format(file_extension)
-    return {'output': '-o {}'.format(os.path.join(path, file_name_template))}
-
-
-def build_blender(blend_file, output, frames=None):
-    args = {'blend_file': blend_file}
-    args.update(build_frames(frames))
-    args.update(build_output(output))
-    cmd = 'blender -b {blend_file} {output} {frames}'.format(**args)
-    return cmd
-
-def blender(*args, **kwargs):
-    cmd = build_blender(*args, **kwargs)
-    return Popen(shlex.split(cmd))
-
-def copy_to_host(blend_file, host):
-    shell('scp -p {} {}:'.format(blend_file, host))
-
-def copy_results_from_host(host, output):
-    shell('scp -r "{}:{}/*" ./{}'.format(host, output, output))
-
-def cleanup_host(host, blend_file, output):
-    # shell('ssh {} rm -r {} {}'.format(host, blend_file, output))
-    shell('ssh {} rm -r {}'.format(host, output))
-
-import re
-def get_file_mod_date(file_name, host='localhost'):
-    # Not just using os.stat because it won't work on remote host
-    regex = re.compile(r'^Modify: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', re.MULTILINE)
-    cmd = 'stat {}'.format(file_name)
-    if host != 'localhost':
-        cmd = 'ssh {} "{}"'.format(host, cmd)
-    p = Popen(shlex.split(cmd), stdout=subprocess.PIPE)
-    std_out, std_err = p.communicate()
-    std_out = std_out.decode('utf-8')
-    match = regex.search(std_out)[0]
-    return match
-
-def remote_blender(host, *args, **kwargs):
-    print('Host: {}'.format(host))
-    print(kwargs)
-    blend_file = kwargs['blend_file']
-    if get_file_mod_date(blend_file, host=host) != get_file_mod_date(blend_file):
-        copy_to_host(blend_file, host)
-    blend_cmd = build_blender(*args, **kwargs)
-    cmd = 'ssh {} "{}"'.format(host, blend_cmd)
-    return Popen(shlex.split(cmd))
-
-def slice_list(input, size):
-    """ Taken from Paulo Scardine from stack overflow """
-    input_size = len(input)
-    slice_size = input_size // size
-    remain = input_size % size
-    result = []
-    iterator = iter(input)
-    for i in range(size):
-        result.append([])
-        for j in range(slice_size):
-            result[i].append(next(iterator))
-        if remain:
-            result[i].append(next(iterator))
-            remain -= 1
-    return result
-
-def split_frames_per_host(frames, hosts):
-    frame_slices = slice_list(frames, len(hosts))
-    frames_per_host = {host: frames for host, frames in zip(hosts, frame_slices)}
-    return frames_per_host
 
 
 class BlenderRender(Tool):

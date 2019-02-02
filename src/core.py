@@ -1,5 +1,9 @@
 import os
 from multiprocessing import Pool, cpu_count
+import re
+from subprocess import Popen
+import subprocess
+import shlex
 
 import cv2
 
@@ -107,3 +111,35 @@ def pipeline_wrapper(args):
     images = load_images(paths)
     results = args.tool(args, images)
     output_to_basenames(paths, results, args.output)
+
+def slice_list(input, size):
+    """ Taken from Paulo Scardine from stack overflow """
+    input_size = len(input)
+    slice_size = input_size // size
+    remain = input_size % size
+    result = []
+    iterator = iter(input)
+    for i in range(size):
+        result.append([])
+        for j in range(slice_size):
+            result[i].append(next(iterator))
+        if remain:
+            result[i].append(next(iterator))
+            remain -= 1
+    return result
+
+def get_file_mod_date(file_name, host='localhost'):
+    # Not just using os.stat because it won't work on remote host
+    regex = re.compile(r'^Modify: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', re.MULTILINE)
+    cmd = 'stat {}'.format(file_name)
+    if host != 'localhost':
+        cmd = 'ssh {} "{}"'.format(host, cmd)
+    p = Popen(shlex.split(cmd), stdout=subprocess.PIPE)
+    std_out, std_err = p.communicate()
+    std_out = std_out.decode('utf-8')
+    match = regex.search(std_out)[0]
+    return match
+
+def shell(cmd_str):
+    p = Popen(shlex.split(cmd_str))
+    p.wait()
