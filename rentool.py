@@ -4,7 +4,7 @@ import argparse
 from src.pipeline import run_pipeline
 from src.tools import (AddOverlayTool, InterpolateTool, ScaleTool,
                    DenoiseTool, AddNoiseTool, DiffTool, BlendTool,
-                   ExtractForegroundTool)
+                   ExtractForegroundTool, BlenderRender)
 
 
 def parse_arguments(arguments=None):
@@ -14,7 +14,7 @@ def parse_arguments(arguments=None):
 
     _tools = [AddOverlayTool, InterpolateTool, ScaleTool,
               DenoiseTool, AddNoiseTool, DiffTool, BlendTool,
-              ExtractForegroundTool]
+              ExtractForegroundTool, BlenderRender]
     for tool in _tools:
         tool.build_standalone_parser(subparsers)
 

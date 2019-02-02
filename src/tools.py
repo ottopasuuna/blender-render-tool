@@ -236,3 +236,78 @@ class ExtractForegroundTool(Tool):
         background = load_image(args.background)
         foreground = extract_foreground(full_image, background, args.threshold)
         save_or_show(foreground, args.output)
+
+
+
+from subprocess import Popen
+import shlex
+import os
+
+def build_frames(frames):
+    args = {}
+    if frames is not None:
+        args['frames'] = '-f ' + ','.join([str(f) for f in list(frames)])
+    else:
+        args['frames'] = ''
+    return args
+
+def build_output(path):
+    file_extension = 'png'
+    file_name_template = '####.{}'.format(file_extension)
+    return {'output': '-o {}'.format(os.path.join(path, file_name_template))}
+
+
+def build_blender(blend_file, output, frames=None):
+    args = {'blend_file': blend_file}
+    args.update(build_frames(frames))
+    args.update(build_output(output))
+    cmd = 'blender -b {blend_file} {output} {frames}'.format(**args)
+    return cmd
+
+def blender(*args, **kwargs):
+    cmd = build_blender(*args, **kwargs)
+    cmd = shlex.split(cmd)
+    return Popen(cmd)
+
+class BlenderRender(Tool):
+
+    @classmethod
+    def build_standalone_parser(cls, subparsers):
+        render_parser = subparsers.add_parser('render',
+                                              help='Wrapper to Blender for rendering a project')
+        render_parser.add_argument('blend_file', type=str,
+                                   help='.blend file to render')
+        render_parser.add_argument('-o', '--output', type=str,
+                                   help='Output directory to save render results to.')
+        render_parser.add_argument('-n', '--num_frames', type=int,
+                                   help='Number of frames in the animation')
+        render_parser.add_argument('-s', '--start_frame', type=int, default=1,
+                                   help='Frame to start rendering from')
+        render_parser.add_argument('-e', '--end_frame', type=int, default=-1,
+                                   help='Frame to end rendering at')
+        render_parser.add_argument('-d', '--distribute', type=str, nargs='+', default=['localhost'],
+                                   help='Distribute work to another machine')
+        render_parser.set_defaults(func=cls._run)
+        return render_parser
+
+    @classmethod
+    def _run(cls, args):
+        if args.end_frame == -1:
+            end_frame = args.num_frames
+        else:
+            end_frame = min(args.end_frame, args.num_frames)
+        skip = 1
+        frames = range(args.start_frame, end_frame+1, skip)
+        # num_hosts = len(args.distribute)
+        # frames_per_host = len(frames)/num_hosts
+
+        processes = []
+        for host in args.distribute:
+            if host == 'localhost':
+                p = blender(blend_file=args.blend_file,
+                            output=args.output,
+                            frames=frames)
+                processes.append(p)
+
+        for p in processes:
+            p.wait()
