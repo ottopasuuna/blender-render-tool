@@ -243,13 +243,11 @@ class ExtractForegroundTool(Tool):
 class BlenderRender(Tool):
 
     @classmethod
-    def build_standalone_parser(cls, subparsers):
+    def build_pipeline_parser(cls, subparsers):
         render_parser = subparsers.add_parser('render',
                                               help='Wrapper to Blender for rendering a project')
         render_parser.add_argument('blend_file', type=str,
                                    help='.blend file to render')
-        render_parser.add_argument('-o', '--output', type=str,
-                                   help='Output directory to save render results to.')
         render_parser.add_argument('-n', '--num_frames', type=int,
                                    help='Number of frames in the animation')
         render_parser.add_argument('-s', '--start_frame', type=int, default=1,
@@ -260,8 +258,22 @@ class BlenderRender(Tool):
                                    help='Distribute work to another machine')
         render_parser.add_argument('-j', '--jump', type=int, default=1,
                                    help='Number of frames to skip.')
-        render_parser.set_defaults(func=cls._run)
+        render_parser.set_defaults(func=cls.pipeline_run, output='render_output')
         return render_parser
+
+    @classmethod
+    def build_standalone_parser(cls, subparsers):
+        parser = cls.build_pipeline_parser(subparsers)
+        parser.add_argument('-o', '--output', type=str, default='render_output',
+                            help='Output directory to save render results to.')
+        parser.set_defaults(func=cls._run)
+        return parser
+
+    @classmethod
+    def pipeline_run(cls, args, _):
+        cls._run(args)
+        images = load_images(args.output)
+        return images
 
     @classmethod
     def _run(cls, args):

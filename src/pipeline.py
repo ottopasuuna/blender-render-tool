@@ -4,7 +4,7 @@ import yaml
 from .core import load_images, save_images
 
 from .tools import (AddOverlayTool, InterpolateTool, ScaleTool,
-                   DenoiseTool)
+                   DenoiseTool, BlenderRender)
 
 
 def run_load_images(args, images):
@@ -31,6 +31,7 @@ def parse_args(args):
     InterpolateTool.build_pipeline_parser(subparsers)
     ScaleTool.build_pipeline_parser(subparsers)
     DenoiseTool.build_pipeline_parser(subparsers)
+    BlenderRender.build_pipeline_parser(subparsers)
 
     return parser.parse_args(args)
 
@@ -42,8 +43,8 @@ def run_pipeline(args):
     if not isinstance(pipeline, list):
         raise RuntimeError('Improper format for YAML pipeline')
     pipeline = [line.split() for line in pipeline]
-    if pipeline[0][0] != 'load':
-        raise RuntimeError('First line must be load.')
+    if pipeline[0][0] not in ('load', 'render'):
+        raise RuntimeError('First line must be load or render.')
 
     images = None
     for step in pipeline:
