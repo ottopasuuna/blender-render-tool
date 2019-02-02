@@ -243,6 +243,10 @@ from subprocess import Popen
 import shlex
 import os
 
+def shell(cmd_str):
+    p = Popen(shlex.split(cmd_str))
+    p.wait()
+
 def build_frames(frames):
     args = {}
     if frames is not None:
@@ -266,8 +270,48 @@ def build_blender(blend_file, output, frames=None):
 
 def blender(*args, **kwargs):
     cmd = build_blender(*args, **kwargs)
-    cmd = shlex.split(cmd)
-    return Popen(cmd)
+    return Popen(shlex.split(cmd))
+
+def copy_to_host(blend_file, host):
+    shell('scp {} {}:'.format(blend_file, host))
+
+def copy_results_from_host(host, output):
+    shell('scp -r "{}:{}/*" ./{}'.format(host, output, output))
+
+def cleanup_host(host, blend_file, output):
+    # shell('ssh {} rm -r {} {}'.format(host, blend_file, output))
+    shell('ssh {} rm -r {}'.format(host, output))
+
+def remote_blender(host, *args, **kwargs):
+    print('Host: {}'.format(host))
+    print(kwargs)
+    blend_file = kwargs['blend_file']
+    copy_to_host(blend_file, host)
+    blend_cmd = build_blender(*args, **kwargs)
+    cmd = 'ssh {} "{}"'.format(host, blend_cmd)
+    return Popen(shlex.split(cmd))
+
+def slice_list(input, size):
+    """ Taken from Paulo Scardine from stack overflow """
+    input_size = len(input)
+    slice_size = input_size // size
+    remain = input_size % size
+    result = []
+    iterator = iter(input)
+    for i in range(size):
+        result.append([])
+        for j in range(slice_size):
+            result[i].append(next(iterator))
+        if remain:
+            result[i].append(next(iterator))
+            remain -= 1
+    return result
+
+def split_frames_per_host(frames, hosts):
+    frame_slices = slice_list(frames, len(hosts))
+    frames_per_host = {host: frames for host, frames in zip(hosts, frame_slices)}
+    return frames_per_host
+
 
 class BlenderRender(Tool):
 
@@ -298,16 +342,25 @@ class BlenderRender(Tool):
             end_frame = min(args.end_frame, args.num_frames)
         skip = 1
         frames = range(args.start_frame, end_frame+1, skip)
-        # num_hosts = len(args.distribute)
-        # frames_per_host = len(frames)/num_hosts
+        frames_per_host = split_frames_per_host(frames, args.distribute)
+        print(frames_per_host)
 
         processes = []
         for host in args.distribute:
+            _frames = frames_per_host[host]
             if host == 'localhost':
                 p = blender(blend_file=args.blend_file,
                             output=args.output,
-                            frames=frames)
-                processes.append(p)
-
+                            frames=_frames)
+            else:
+                p = remote_blender(host,
+                                   blend_file=args.blend_file,
+                                   output=args.output,
+                                   frames=_frames)
+            processes.append(p)
         for p in processes:
             p.wait()
+        for host in args.distribute:
+            if host != 'localhost':
+                copy_results_from_host(host, args.output)
+                cleanup_host(host, args.blend_file, args.output)
