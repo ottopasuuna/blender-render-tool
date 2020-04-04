@@ -43,7 +43,7 @@ def get_paths(path):
             raise RuntimeError('Specified path(s) does not exist')
     else:
         paths = path
-    return paths
+    return sorted(paths)
 
 
 def show_img(img):
