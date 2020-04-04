@@ -1,3 +1,4 @@
+import os
 from .blender import (split_frames_per_host, remote_blender, blender,
                       copy_results_from_host, cleanup_host)
 from .core import (load_images, parallelize, load_image, save_images,
@@ -95,7 +96,7 @@ class InterpolateTool(Tool):
 
         # Interpolation
         interp_frames = parallelize(interp_func, groups)
-        all_frames = interp_frames + images
+        all_frames = [None]*(len(interp_frames) + len(images))
         all_frames[::2] = images
         all_frames[1::2] = interp_frames
         return all_frames
@@ -248,8 +249,6 @@ class BlenderRender(Tool):
                                               help='Wrapper to Blender for rendering a project')
         render_parser.add_argument('blend_file', type=str,
                                    help='.blend file to render')
-        render_parser.add_argument('-n', '--num_frames', type=int,
-                                   help='Number of frames in the animation')
         render_parser.add_argument('-s', '--start_frame', type=int, default=1,
                                    help='Frame to start rendering from')
         render_parser.add_argument('-e', '--end_frame', type=int,
@@ -277,11 +276,7 @@ class BlenderRender(Tool):
 
     @classmethod
     def _run(cls, args):
-        if args.end_frame:
-            end_frame = min(args.num_frames, args.end_frame)
-        else:
-            end_frame = args.num_frames
-        frames = range(args.start_frame, end_frame+1, args.jump)
+        frames = range(args.start_frame, args.end_frame+1, args.jump)
         frames_per_host = split_frames_per_host(frames, args.distribute)
         print('Frames per host: {}'.format(frames_per_host))
 
@@ -289,7 +284,7 @@ class BlenderRender(Tool):
         for host in args.distribute:
             _frames = frames_per_host[host]
             if host == 'localhost':
-                p = blender(blend_file=args.blend_file,
+                p = blender(blend_file=os.path.expanduser(args.blend_file),
                             output=args.output,
                             frames=_frames)
             else:
