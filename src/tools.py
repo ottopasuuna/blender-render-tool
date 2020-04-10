@@ -65,7 +65,7 @@ class InterpolateTool(Tool):
         interp_parser = cls.build_pipeline_parser(subparsers)
         interp_parser.add_argument('images', type=str)
         interp_parser.add_argument('-o', '--output', default='interp_frames')
-        interp_parser.add_argument('-f', '--format', default='{0:04d}.png')
+        interp_parser.add_argument('-f', '--format', default='{0:04d}.png', help='Filename format of frames')
         interp_parser.set_defaults(func=cls._run)
         return interp_parser
 

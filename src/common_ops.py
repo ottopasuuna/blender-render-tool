@@ -71,20 +71,19 @@ def blend_all(imgs):
 def flow(frame1, frame2):
     prvs = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
     next = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-    _flow = cv2.calcOpticalFlowFarneback(prvs, next, None, 0.5, 2, 10, 5, 7, 1.2, 0)
+    _flow = cv2.calcOpticalFlowFarneback(prvs, next, None, 0.5, 3, 10, 10, 7, 1.5, 0)
     return _flow
 
 def interpolate_flow(frame1, frame3):
-    # frame2 = cv2.addWeighted(frame1, 0.5, frame3, 0.5, 0)
     # Thanks to github user koteth for the interpolation algorithm
     _flow = flow(frame1, frame3)
     h, w = _flow.shape[:2]
-    _flow = -_flow #?
-    _flow[:, :, 0] /= 2.0
+    _flow = -_flow # flip image
+    _flow[:, :, 0] /= 2.0 # divide by 2 to get halfway point
     _flow[:, :, 1] /= 2.0
     _flow[:, :, 0] += np.arange(w)
     _flow[:, :, 1] += np.arange(h)[:, np.newaxis]
-    frame2 = cv2.remap(frame1, _flow, None, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    frame2 = cv2.remap(frame1, _flow, None, cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REPLICATE)
     return frame2
 
 def scale(img, width, height, mode):
