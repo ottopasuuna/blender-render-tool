@@ -137,7 +137,11 @@ def get_file_mod_date(file_name, host='localhost'):
     p = Popen(shlex.split(cmd), stdout=subprocess.PIPE)
     std_out, std_err = p.communicate()
     std_out = std_out.decode('utf-8')
-    match = regex.search(std_out)[0]
+    res = regex.search(std_out)
+    if res:
+        match = regex.search(std_out)[0]
+    else:
+        match = None
     return match
 
 def shell(cmd_str):
