@@ -1,10 +1,12 @@
+import argparse
 import os
+import textwrap
 from .blender import (split_frames_per_host, remote_blender, blender,
                       copy_results_from_host, cleanup_host)
 from .core import (load_images, parallelize, load_image, save_images,
-                  pipeline_wrapper, save_or_show)
+                  pipeline_wrapper, save_or_show, download_url, MODEL_CACHE_DIR)
 from .common_ops import (transparentOverlay, interpolate_flow, blend,
-                        scale, denoise, add_noise, diff, blend_all,
+                        scale, dnn_upscale, denoise, add_noise, diff, blend_all,
                         extract_foreground)
 
 
@@ -106,7 +108,27 @@ class ScaleTool(Tool):
 
     @classmethod
     def build_pipeline_parser(cls, subparsers):
-        scale_parser = subparsers.add_parser('scale', help='Resize frames')
+        description = textwrap.dedent('''\
+                Resize frames.
+
+                Size can be specified by width and height in pixels, or percentages (as a float).
+                For example, "--percent 2"  will double the resolution,
+                "-p 0.5" will half the resolution, etc.
+
+                Different modes are available with the --mode option:
+                cubic
+                lanczos
+                edsr:    A DNN upsampler, quite slow. Supports 2, 3, 4 scaling factors
+                espcn:   A DNN upsampler, much faster than edsr. Supports 2, 3, 4 factors
+                fsrcnn:  A DNN upsampler, similar to espcn. Supports 2, 3, 4 factors
+                lapsrn:  A DNN upsampler, in between edsr and espcn. Supports 2, 4, 8 factors
+
+                DNN based upsamplers will have to download pre-trained models,
+                stored at {}
+                '''.format(MODEL_CACHE_DIR))
+        scale_parser = subparsers.add_parser('scale', help='Resize frames',
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            description=description)
         scale_parser.add_argument('-m', '--mode', default='lanczos',
                 help='Interpolation mode to use when resizing.')
         scale_parser.add_argument('-p', '--percent', type=float,
@@ -131,10 +153,35 @@ class ScaleTool(Tool):
             height, width = int(template.shape[0]*args.percent), int(template.shape[1]*args.percent)
         else:
             width, height = args.width, args.height
-        params = [(img, width, height, args.mode) for img in images]
-        scaled = parallelize(scale, params)
+        if args.mode in {'edsr', 'espcn', 'fsrcnn', 'lapsrn'}:
+            supported_factors = {'edsr': {2, 3, 4},
+                                 'espcn': {2, 3, 4},
+                                 'fsrcnn': {2, 3, 4},
+                                 'lapsrn': {2, 4, 8}}
+            factor = int(args.percent)
+            if args.percent not in supported_factors[args.mode]:
+                raise ValueError("Supported factors for {} are {}".format(args.mode, supported_factors[args.mode]))
+            cls.get_dnn_model(args.mode, factor)
+            params = [(img, args.mode, args.percent) for img in images]
+            scaled = parallelize(dnn_upscale, params)
+        else:
+            params = [(img, width, height, args.mode) for img in images]
+            scaled = parallelize(scale, params)
         return scaled
 
+    @staticmethod
+    def get_dnn_model(model, factor):
+        base_url = {'edsr': 'https://github.com/Saafke/EDSR_Tensorflow/raw/master/models/EDSR_x{factor}.pb',
+                    'espcn': 'https://github.com/fannymonori/TF-ESPCN/raw/master/export/ESPCN_x{factor}.pb',
+                    'fsrcnn': 'https://github.com/Saafke/FSRCNN_Tensorflow/raw/master/models/FSRCNN_x{factor}.pb',
+                    'lapsrn': 'https://github.com/fannymonori/TF-LapSRN/raw/master/export/LapSRN_x{factor}.pb',
+                    }[model]
+        url = base_url.format(factor=factor)
+        filename = url.split('/')[-1]
+        save_path = os.path.join(MODEL_CACHE_DIR, filename)
+        if not os.path.exists(save_path):
+            os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
+            download_url(url, save_path)
 
 class DenoiseTool(Tool):
 

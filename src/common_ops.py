@@ -1,3 +1,7 @@
+import os
+
+from .core import MODEL_CACHE_DIR
+
 import cv2
 import numpy as np
 
@@ -93,6 +97,26 @@ def scale(img, width, height, mode):
         interp = cv2.INTER_LANCZOS4
     scaled_img = cv2.resize(img, (width, height), interpolation=interp)
     return scaled_img
+
+def dnn_upscale(img, mode, factor):
+    sr = cv2.dnn_superres.DnnSuperResImpl_create()
+    factor = int(factor)
+    if mode == 'edsr':
+        path = "EDSR_x{}.pb".format(factor)
+    elif mode == 'espcn':
+        path = "ESPCN_x{}.pb".format(factor)
+    elif mode == 'fsrcnn':
+        path = "FSRCNN_x{}.pb".format(factor)
+    elif mode == 'lapsrn':
+        path = 'LapSRN_x{}.pb'.format(factor)
+    else:
+        raise ValueError('"{}" upsample mode not recognized'.format(mode))
+    path = os.path.join(MODEL_CACHE_DIR, path)
+    sr.readModel(path)
+    sr.setModel(mode, factor)
+    scaled_img = sr.upsample(img[..., :3]) # DNN only supports 3 channels
+    return scaled_img
+
 
 def denoise(img, strength, mode='fastNL'):
     if mode == 'fastNL':

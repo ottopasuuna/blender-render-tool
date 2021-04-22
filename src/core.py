@@ -4,11 +4,15 @@ import re
 from subprocess import Popen
 import subprocess
 import shlex
+import sys
+import requests
 
 import cv2
+from tqdm import tqdm
 
 NUM_CORES = cpu_count()
 
+MODEL_CACHE_DIR = os.path.expanduser("~/.local/share/rentool/models")
 
 def parallelize(func, params_list):
     with Pool(processes=NUM_CORES) as pool:
@@ -147,3 +151,15 @@ def get_file_mod_date(file_name, host='localhost'):
 def shell(cmd_str):
     p = Popen(shlex.split(cmd_str))
     p.wait()
+
+def download_url(url, save_path):
+    filesize = int(requests.head(url).headers["Content-Length"])
+    chunk_size = 1024
+    filename = url.split('/')[-1]
+    with requests.get(url, stream=True) as r, \
+            open(save_path, "wb") as f, \
+            tqdm(unit="B", unit_scale=True, unit_divisor=1024,
+                    total=filesize, file=sys.stdout, desc="Downloading {}".format(filename)) as progress:
+        for chunk in r.iter_content(chunk_size=chunk_size):
+            datasize = f.write(chunk)
+            progress.update(datasize)

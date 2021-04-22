@@ -1,3 +1,5 @@
-opencv-python
+opencv-contrib-python>=4.3
+tqdm
+requests
 pyyaml
 nose
