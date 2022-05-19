@@ -1,8 +1,9 @@
-from .core import (slice_list, shell, get_file_mod_date)
-
-import os
 from subprocess import Popen
+import json
+import os
 import shlex
+
+from .core import (slice_list, shell, get_file_mod_date)
 
 
 def build_frames(frames):
@@ -26,8 +27,20 @@ def build_blender(blend_file, output, frames=None):
     cmd = 'blender -b {blend_file} {output} {frames}'.format(**args)
     return cmd
 
+def build_blender_script(blend_file, output, scene=None, layer="", frames=None):
+    args = {
+        'output': output,
+        'frames': frames,
+        'scene' : scene,
+        'layer': layer,
+    }
+    json_args = json.dumps(args)
+    blender_proc_script_path = os.path.join(os.path.dirname(__file__), "rentool_blender_proc.py")
+    cmd = f'blender -b {blend_file} --python {blender_proc_script_path} -- \'{json_args}\''
+    return cmd
+
 def blender(*args, **kwargs):
-    cmd = build_blender(*args, **kwargs)
+    cmd = build_blender_script(*args, **kwargs)
     return Popen(shlex.split(cmd))
 
 def copy_to_host(blend_file, host):

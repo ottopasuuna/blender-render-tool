@@ -296,14 +296,17 @@ class BlenderRender(Tool):
                                               help='Wrapper to Blender for rendering a project')
         render_parser.add_argument('blend_file', type=str,
                                    help='.blend file to render')
-        render_parser.add_argument('-s', '--start_frame', type=int, default=1,
-                                   help='Frame to start rendering from')
-        render_parser.add_argument('-e', '--end_frame', type=int,
-                                   help='Frame to end rendering at')
+        render_parser.add_argument('-f', '--frames', type=str, default="1",
+                                   help='Frames to render. Can be a comma separated list, or python range syntax. '
+                                        'Ex: 1,4,5,7:20:2')
         render_parser.add_argument('-d', '--distribute', type=str, nargs='+', default=['localhost'],
                                    help='Distribute work to another machine')
         render_parser.add_argument('-j', '--jump', type=int, default=1,
                                    help='Number of frames to skip.')
+        render_parser.add_argument('-S', '--scene', type=str,
+                                   help='Scene to render')
+        render_parser.add_argument('-l', '--layer', type=str, default="",
+                                   help='View Layer to render')
         render_parser.set_defaults(func=cls.pipeline_run, output='render_output')
         return render_parser
 
@@ -321,9 +324,23 @@ class BlenderRender(Tool):
         images = load_images(args.output)
         return images
 
+    @staticmethod
+    def parse_frames(frame_string):
+        frames = []
+        for sequence in frame_string.split(','):
+            if ':' in sequence:
+                r = sequence.split(':')
+                start = int(r[0])
+                end = int(r[1])
+                step = int(r[2]) if len(r) >= 3 else 1
+                frames.extend(list(range(start, end, step)))
+            else:
+                frames.append(int(sequence))
+        return frames
+
     @classmethod
     def _run(cls, args):
-        frames = range(args.start_frame, args.end_frame+1, args.jump)
+        frames = cls.parse_frames(args.frames)
         frames_per_host = split_frames_per_host(frames, args.distribute)
         print('Frames per host: {}'.format(frames_per_host))
 
@@ -333,6 +350,8 @@ class BlenderRender(Tool):
             if host == 'localhost':
                 p = blender(blend_file=os.path.expanduser(args.blend_file),
                             output=args.output,
+                            scene=args.scene,
+                            layer=args.layer,
                             frames=_frames)
             else:
                 p = remote_blender(host,
