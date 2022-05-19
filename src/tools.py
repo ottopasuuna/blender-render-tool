@@ -11,6 +11,12 @@ from .common_ops import (transparentOverlay, interpolate_flow, blend,
 
 
 class Tool:
+    name='GENERIC TOOL'
+
+    def __str__(self):
+        params = ["{}={}".format(name, value) for name, value in self.__dict__.items()]
+        param_str = ' '.join(params)
+        return f"{self.name} {param_str}"
 
     @classmethod
     def build_pipeline_parser(cls, subparsers):
@@ -26,6 +32,18 @@ class Tool:
 
 
 class AddOverlayTool(Tool):
+    name = 'add-overlay'
+
+    def __init__(self, background):
+        self.background = background
+
+    @classmethod
+    def from_dict(cls, dct):
+        return cls(background=dct.get('background'))
+
+    @classmethod
+    def from_args(cls, args):
+        return cls(background=args.background)
 
     @classmethod
     def build_standalone_parser(cls, subparsers):
@@ -33,8 +51,7 @@ class AddOverlayTool(Tool):
         overlay_parser.add_argument('images', type=str, nargs='+',
                                     help='Image(s) of just the foreground, transparent everywhere else')
         overlay_parser.add_argument('-o', '--output')
-        overlay_parser.set_defaults(func=pipeline_wrapper,
-                                    tool=cls.run)
+        overlay_parser.set_defaults(func=pipeline_wrapper, tool=cls)
         return overlay_parser
 
     @classmethod
@@ -46,14 +63,28 @@ class AddOverlayTool(Tool):
         overlay_parser.set_defaults(func=AddOverlayTool.run)
         return overlay_parser
 
-    @classmethod
-    def run(cls, args, images):
-        bg = load_image(args.background)
+    def __call__(self, images):
+        bg = load_image(self.background)
         params = [(subject, bg) for subject in images]
         merged = parallelize(transparentOverlay, params)
         return merged
 
 class InterpolateTool(Tool):
+    name = 'interpolate'
+
+    def __init__(self, mode):
+        self.mode = mode
+
+    @classmethod
+    def from_dict(cls, dct):
+        if not isinstance(dct, dict):
+            return cls(mode='flow')
+        mode = dct.get('mode', 'flow')
+        return cls(mode=mode)
+
+    @classmethod
+    def from_args(cls, args):
+        return cls(mode=args.mode)
 
     @classmethod
     def build_pipeline_parser(cls, subparsers):
@@ -74,14 +105,14 @@ class InterpolateTool(Tool):
     @classmethod
     def _run(cls, args):
         images = load_images(args.images)
-        frames = cls.run(args, images)
+        tool = cls.from_args(args)
+        frames = tool(images)
         save_images(frames, args.output)
 
-    @classmethod
-    def run(cls, args, images):
-        if args.mode == 'flow':
+    def __call__(self, images):
+        if self.mode == 'flow':
             interp_func = interpolate_flow
-        elif args.mode == 'blend':
+        elif self.mode == 'blend':
             interp_func = blend
         else:
             raise ValueError('Invalid interpolation mode')
@@ -105,6 +136,34 @@ class InterpolateTool(Tool):
 
 
 class ScaleTool(Tool):
+    name = 'scale'
+
+    def __init__(self, mode, percent, width, height):
+        self.mode = mode
+        self.percent = percent
+        self.width = width
+        self.height = height
+
+    @classmethod
+    def from_dict(cls, dct):
+        percent = float(dct['percent']) if 'percent' in dct else None
+        width = int(dct['width']) if 'width' in dct else None
+        height = int(dct['height']) if 'height' in dct else None
+        return cls(
+            mode=dct.get('mode', 'lanczos'),
+            percent=percent,
+            width=width,
+            height=height,
+        )
+
+    @classmethod
+    def from_args(cls, args):
+        return cls(
+            mode=args.mode,
+            percent=args.percent,
+            width=args.width,
+            height=args.height,
+        )
 
     @classmethod
     def build_pipeline_parser(cls, subparsers):
@@ -143,29 +202,28 @@ class ScaleTool(Tool):
         scale_parser = cls.build_pipeline_parser(subparsers)
         scale_parser.add_argument('images', nargs='+', type=str)
         scale_parser.add_argument('-o', '--output')
-        scale_parser.set_defaults(func=pipeline_wrapper, tool=cls.run)
+        scale_parser.set_defaults(func=pipeline_wrapper, tool=cls)
         return scale_parser
 
-    @classmethod
-    def run(cls, args, images):
+    def __call__(self, images):
         template = images[0]
-        if args.percent:
-            height, width = int(template.shape[0]*args.percent), int(template.shape[1]*args.percent)
+        if self.percent:
+            height, width = int(template.shape[0]*self.percent), int(template.shape[1]*self.percent)
         else:
-            width, height = args.width, args.height
-        if args.mode in {'edsr', 'espcn', 'fsrcnn', 'lapsrn'}:
+            width, height = self.width, self.height
+        if self.mode in {'edsr', 'espcn', 'fsrcnn', 'lapsrn'}:
             supported_factors = {'edsr': {2, 3, 4},
                                  'espcn': {2, 3, 4},
                                  'fsrcnn': {2, 3, 4},
                                  'lapsrn': {2, 4, 8}}
-            factor = int(args.percent)
-            if args.percent not in supported_factors[args.mode]:
-                raise ValueError("Supported factors for {} are {}".format(args.mode, supported_factors[args.mode]))
-            cls.get_dnn_model(args.mode, factor)
-            params = [(img, args.mode, args.percent) for img in images]
+            factor = int(self.percent)
+            if self.percent not in supported_factors[self.mode]:
+                raise ValueError("Supported factors for {} are {}".format(self.mode, supported_factors[self.mode]))
+            self.get_dnn_model(self.mode, factor)
+            params = [(img, self.mode, self.percent) for img in images]
             scaled = parallelize(dnn_upscale, params)
         else:
-            params = [(img, width, height, args.mode) for img in images]
+            params = [(img, width, height, self.mode) for img in images]
             scaled = parallelize(scale, params)
         return scaled
 
@@ -184,6 +242,28 @@ class ScaleTool(Tool):
             download_url(url, save_path)
 
 class DenoiseTool(Tool):
+    name = 'denoise'
+
+    defaults = {
+        'strength': 5,
+        'mode': 'fastNL',
+    }
+
+    def __init__(self, mode, strength):
+        self.mode = mode
+        self.strength = strength
+
+    @classmethod
+    def from_dict(cls, dct):
+        d = cls.defaults.copy()
+        d.update(dct)
+        strength = int(d.get('strength'))
+        mode = d.get('mode')
+        return cls(mode=mode, strength=strength)
+
+    @classmethod
+    def from_args(cls, args):
+        return cls(mode=args.mode, strength=args.strength)
 
     @classmethod
     def build_pipeline_parser(cls, subparsers):
@@ -199,11 +279,10 @@ class DenoiseTool(Tool):
         denoise_parser = cls.build_pipeline_parser(subparsers)
         denoise_parser.add_argument('images', nargs='+', type=str)
         denoise_parser.add_argument('-o', '--output')
-        denoise_parser.set_defaults(func=pipeline_wrapper, tool=cls.run)
+        denoise_parser.set_defaults(func=pipeline_wrapper, tool=cls)
 
-    @classmethod
-    def run(cls, args, images):
-        params = [(img, args.strength, args.mode) for img in images]
+    def __call__(self, images):
+        params = [(img, self.strength, self.mode) for img in images]
         denoised = parallelize(denoise, params)
         return denoised
 

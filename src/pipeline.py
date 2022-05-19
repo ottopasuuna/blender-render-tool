@@ -7,47 +7,72 @@ from .tools import (AddOverlayTool, InterpolateTool, ScaleTool,
                    DenoiseTool, BlenderRender)
 
 
-def run_load_images(args, images):
-    return load_images(args.images)
+class LoadImages(object):
+    name = 'load'
 
+    def __init__(self, path):
+        self.path = path
 
-def run_save_images(args, images):
-    save_images(images, args.output)
+    def __str__(self):
+        return f"load {self.path}"
 
+    @classmethod
+    def from_dict(cls, dct):
+        if 'path' not in dct:
+            raise ValueError("\"load\" operation requires an argument \"path\"")
+        return cls(path=dct['path'])
 
-def parse_args(args):
-    parser = argparse.ArgumentParser(description='Multitool for post processing blender renders.')
-    subparsers = parser.add_subparsers()
+    def __call__(self, images):
+        return load_images(self.path)
 
-    load_images_parser = subparsers.add_parser('load')
-    load_images_parser.add_argument('images')
-    load_images_parser.set_defaults(func=run_load_images)
+class SaveImages(object):
+    name = 'save'
 
-    save_images_parser = subparsers.add_parser('save')
-    save_images_parser.add_argument('output')
-    save_images_parser.set_defaults(func=run_save_images)
+    def __init__(self, path):
+        self.path = path
 
-    AddOverlayTool.build_pipeline_parser(subparsers)
-    InterpolateTool.build_pipeline_parser(subparsers)
-    ScaleTool.build_pipeline_parser(subparsers)
-    DenoiseTool.build_pipeline_parser(subparsers)
-    BlenderRender.build_pipeline_parser(subparsers)
+    def __str__(self):
+        return f"save {self.path}"
 
-    return parser.parse_args(args)
+    @classmethod
+    def from_dict(cls, dct):
+        if dct is None or 'path' not in dct:
+            raise ValueError("\"load\" operation requires an argument \"path\"")
+        return cls(path=dct['path'])
+
+    def __call__(self, images):
+        save_images(images, self.path)
+
+def build_tool(pipeline_stage_dict):
+    build_map = {
+        tool.name: tool
+        for tool in [LoadImages,
+                     SaveImages,
+                     ScaleTool,
+                     InterpolateTool,
+                     DenoiseTool,
+                     AddOverlayTool,
+                     ]
+    }
+    if len(pipeline_stage_dict) > 1:
+        raise ValueError("Pipeline stages can only contain one operation.")
+    tool_name = list(pipeline_stage_dict.keys())[0]
+    if tool_name not in build_map:
+        raise ValueError(f"Operation \"{tool_name}\" not recognized.")
+    params_dct = pipeline_stage_dict[tool_name]
+    return build_map[tool_name].from_dict(params_dct)
 
 
 def run_pipeline(args):
     command_file = args.pipeline_file
     with open(command_file) as f:
-        pipeline = yaml.load(f)
+        pipeline = yaml.load(f, Loader=yaml.BaseLoader)
     if not isinstance(pipeline, list):
-        raise RuntimeError('Improper format for YAML pipeline')
-    pipeline = [line.split() for line in pipeline]
-    if pipeline[0][0] not in ('load', 'render'):
-        raise RuntimeError('First line must be load or render.')
+        raise RuntimeError('Improper format for YAML pipeline. Must be a list of operations')
 
+    print(f"Read pipeline: {pipeline}")
     images = None
-    for step in pipeline:
-        args = parse_args(step)
-        print(step[0])
-        images = args.func(args, images)
+    for stage in pipeline:
+        tool = build_tool(stage)
+        print(tool)
+        images = tool(images)

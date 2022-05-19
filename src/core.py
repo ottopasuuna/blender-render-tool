@@ -113,7 +113,8 @@ def output_to_basenames(input_paths, images, output_path):
 def pipeline_wrapper(args):
     paths = get_paths(args.images)
     images = load_images(paths)
-    results = args.tool(args, images)
+    tool = args.tool.from_args(args)
+    results = tool(images)
     output_to_basenames(paths, results, args.output)
 
 def slice_list(input, size):
