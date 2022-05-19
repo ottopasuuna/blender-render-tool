@@ -359,8 +359,16 @@ class BlenderRender(Tool):
                                    output=args.output,
                                    frames=_frames)
             processes.append(p)
-        for p in processes:
-            p.wait()
+        try:
+            for p in processes:
+                p.wait()
+        except KeyboardInterrupt:
+            for p in processes:
+                p.terminate()
+        except:
+            for p in processes:
+                p.terminate()
+            raise
         for host in args.distribute:
             if host != 'localhost':
                 copy_results_from_host(host, args.output)
