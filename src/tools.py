@@ -1,4 +1,5 @@
 import argparse
+from collections import namedtuple
 import os
 import textwrap
 from .blender import (split_frames_per_host, remote_blender, blender,
@@ -10,8 +11,14 @@ from .common_ops import (transparentOverlay, interpolate_flow, blend,
                         extract_foreground)
 
 
+Parameter = namedtuple('Parameter', ('cli_flags', 'type', 'help', 'default'))
+
 class Tool:
     name='GENERIC TOOL'
+    description='GENERIC TOOL'
+    description_long = ''
+
+    params = {}
 
     def __str__(self):
         params = ["{}={}".format(name, value) for name, value in self.__dict__.items()]
@@ -30,37 +37,52 @@ class Tool:
     def run(cls, args, images):
         raise NotImplementedError
 
+    @classmethod
+    def from_dict(cls, dct):
+        kwargs = {}
+        for name, param in cls.params.items():
+            if isinstance(dct, dict):
+                dct_val = dct.get(name, param.default)
+            else:
+                dct_val = param.default
+            kwargs[name] = param.type(dct_val) if dct_val is not None else None
+        return cls(**kwargs)
+
+    @classmethod
+    def from_args(cls, args):
+        kwargs = {name: getattr(args, name, param.default) for name, param in cls.params.items()}
+        return cls(**kwargs)
+
+    @classmethod
+    def build_parser(cls, subparsers):
+        tool_parser = subparsers.add_parser(cls.name, help=cls.description,
+                                            formatter_class=argparse.RawDescriptionHelpFormatter,
+                                            description=cls.description_long)
+        for name, param in cls.params.items():
+            tool_parser.add_argument(*param.cli_flags, type=param.type,
+                                     default=param.default, help=param.help)
+        return tool_parser
+
 
 class AddOverlayTool(Tool):
     name = 'add-overlay'
+    description = 'Add transparent overlay frames to static background'
+
+    params = {
+        'background': Parameter(cli_flags=['background'], type=str, default=None,
+                                help='Image of the background')
+    }
 
     def __init__(self, background):
         self.background = background
 
     @classmethod
-    def from_dict(cls, dct):
-        return cls(background=dct.get('background'))
-
-    @classmethod
-    def from_args(cls, args):
-        return cls(background=args.background)
-
-    @classmethod
     def build_standalone_parser(cls, subparsers):
-        overlay_parser = cls.build_pipeline_parser(subparsers)
+        overlay_parser = cls.build_parser(subparsers)
         overlay_parser.add_argument('images', type=str, nargs='+',
                                     help='Image(s) of just the foreground, transparent everywhere else')
         overlay_parser.add_argument('-o', '--output')
         overlay_parser.set_defaults(func=pipeline_wrapper, tool=cls)
-        return overlay_parser
-
-    @classmethod
-    def build_pipeline_parser(cls, subparsers):
-        overlay_parser = subparsers.add_parser(
-            'add-overlay', help='Add transparent overlay frames to static background')
-        overlay_parser.add_argument('background', type=str,
-                help='Image of the background')
-        overlay_parser.set_defaults(func=AddOverlayTool.run)
         return overlay_parser
 
     def __call__(self, images):
@@ -71,43 +93,23 @@ class AddOverlayTool(Tool):
 
 class InterpolateTool(Tool):
     name = 'interpolate'
+    description = 'Interpolate frames'
+
+    params = {
+        'mode': Parameter(cli_flags=['-m', '--mode'], type=str, default='flow',
+                          help='Method of computing iterpolated frames.')
+    }
 
     def __init__(self, mode):
         self.mode = mode
 
     @classmethod
-    def from_dict(cls, dct):
-        if not isinstance(dct, dict):
-            return cls(mode='flow')
-        mode = dct.get('mode', 'flow')
-        return cls(mode=mode)
-
-    @classmethod
-    def from_args(cls, args):
-        return cls(mode=args.mode)
-
-    @classmethod
-    def build_pipeline_parser(cls, subparsers):
-        interp_parser = subparsers.add_parser('interpolate', help='Interpolate frames')
-        interp_parser.add_argument('-m', '--mode', default='flow')
-        interp_parser.set_defaults(func=cls.run)
-        return interp_parser
-
-    @classmethod
     def build_standalone_parser(cls, subparsers):
-        interp_parser = cls.build_pipeline_parser(subparsers)
+        interp_parser = cls.build_parser(subparsers)
         interp_parser.add_argument('images', type=str)
         interp_parser.add_argument('-o', '--output', default='interp_frames')
-        interp_parser.add_argument('-f', '--format', default='{0:04d}.png', help='Filename format of frames')
-        interp_parser.set_defaults(func=cls._run)
+        interp_parser.set_defaults(func=pipeline_wrapper, tool=cls)
         return interp_parser
-
-    @classmethod
-    def _run(cls, args):
-        images = load_images(args.images)
-        tool = cls.from_args(args)
-        frames = tool(images)
-        save_images(frames, args.output)
 
     def __call__(self, images):
         if self.mode == 'flow':
@@ -115,7 +117,7 @@ class InterpolateTool(Tool):
         elif self.mode == 'blend':
             interp_func = blend
         else:
-            raise ValueError('Invalid interpolation mode')
+            raise ValueError(f'Invalid interpolation mode \"{self.mode}\"')
 
         # Grouping files to interpolate
         curr = 0
@@ -137,6 +139,34 @@ class InterpolateTool(Tool):
 
 class ScaleTool(Tool):
     name = 'scale'
+    description = 'Resize frames'
+    description_long = textwrap.dedent('''
+        Resize frames.
+
+        Size can be specified by width and height in pixels, or percentages (as a float).
+        For example, "--percent 2"  will double the resolution,
+        "-p 0.5" will half the resolution, etc.
+
+        Different modes are available with the --mode option:
+        cubic
+        lanczos
+        edsr:    A DNN upsampler, quite slow. Supports 2, 3, 4 scaling factors
+        espcn:   A DNN upsampler, much faster than edsr. Supports 2, 3, 4 factors
+        fsrcnn:  A DNN upsampler, similar to espcn. Supports 2, 3, 4 factors
+        lapsrn:  A DNN upsampler, in between edsr and espcn. Supports 2, 4, 8 factors
+
+        DNN based upsamplers will have to download pre-trained models,
+        stored at {}
+        '''.format(MODEL_CACHE_DIR))
+
+    params = {
+        'mode': Parameter(cli_flags=['-m', '--mode'], type=str, default='lanczos',
+                          help='Interpolation mode to use when resizing'),
+        'percent': Parameter(cli_flags=['-p', '--percent'], type=float, default=None,
+                             help='Percentage change as a float'),
+        'width': Parameter(cli_flags=['--width'], type=int, default=None, help=None),
+        'height': Parameter(cli_flags=['--height'], type=int, default=None, help=None),
+    }
 
     def __init__(self, mode, percent, width, height):
         self.mode = mode
@@ -145,61 +175,8 @@ class ScaleTool(Tool):
         self.height = height
 
     @classmethod
-    def from_dict(cls, dct):
-        percent = float(dct['percent']) if 'percent' in dct else None
-        width = int(dct['width']) if 'width' in dct else None
-        height = int(dct['height']) if 'height' in dct else None
-        return cls(
-            mode=dct.get('mode', 'lanczos'),
-            percent=percent,
-            width=width,
-            height=height,
-        )
-
-    @classmethod
-    def from_args(cls, args):
-        return cls(
-            mode=args.mode,
-            percent=args.percent,
-            width=args.width,
-            height=args.height,
-        )
-
-    @classmethod
-    def build_pipeline_parser(cls, subparsers):
-        description = textwrap.dedent('''\
-                Resize frames.
-
-                Size can be specified by width and height in pixels, or percentages (as a float).
-                For example, "--percent 2"  will double the resolution,
-                "-p 0.5" will half the resolution, etc.
-
-                Different modes are available with the --mode option:
-                cubic
-                lanczos
-                edsr:    A DNN upsampler, quite slow. Supports 2, 3, 4 scaling factors
-                espcn:   A DNN upsampler, much faster than edsr. Supports 2, 3, 4 factors
-                fsrcnn:  A DNN upsampler, similar to espcn. Supports 2, 3, 4 factors
-                lapsrn:  A DNN upsampler, in between edsr and espcn. Supports 2, 4, 8 factors
-
-                DNN based upsamplers will have to download pre-trained models,
-                stored at {}
-                '''.format(MODEL_CACHE_DIR))
-        scale_parser = subparsers.add_parser('scale', help='Resize frames',
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-            description=description)
-        scale_parser.add_argument('-m', '--mode', default='lanczos',
-                help='Interpolation mode to use when resizing.')
-        scale_parser.add_argument('-p', '--percent', type=float,
-                help=('Percentage change as a float'))
-        scale_parser.add_argument('--width', type=int)
-        scale_parser.add_argument('--height', type=int)
-        scale_parser.set_defaults(func=cls.run)
-        return scale_parser
-
-    @classmethod
     def build_standalone_parser(cls, subparsers):
-        scale_parser = cls.build_pipeline_parser(subparsers)
+        scale_parser = cls.build_parser(subparsers)
         scale_parser.add_argument('images', nargs='+', type=str)
         scale_parser.add_argument('-o', '--output')
         scale_parser.set_defaults(func=pipeline_wrapper, tool=cls)
@@ -243,10 +220,13 @@ class ScaleTool(Tool):
 
 class DenoiseTool(Tool):
     name = 'denoise'
+    description = 'Denoise images'
 
-    defaults = {
-        'strength': 5,
-        'mode': 'fastNL',
+    params = {
+        'mode': Parameter(cli_flags=['-m', '--mode'], type=str, default='fastNL',
+                          help='Method to use for denoising'),
+        'strength': Parameter(cli_flags=['-s', '--strength'], type=int, default=5,
+                              help='The strength of the filter')
     }
 
     def __init__(self, mode, strength):
@@ -254,29 +234,8 @@ class DenoiseTool(Tool):
         self.strength = strength
 
     @classmethod
-    def from_dict(cls, dct):
-        d = cls.defaults.copy()
-        d.update(dct)
-        strength = int(d.get('strength'))
-        mode = d.get('mode')
-        return cls(mode=mode, strength=strength)
-
-    @classmethod
-    def from_args(cls, args):
-        return cls(mode=args.mode, strength=args.strength)
-
-    @classmethod
-    def build_pipeline_parser(cls, subparsers):
-        denoise_parser = subparsers.add_parser('denoise', help='Denoise images')
-        denoise_parser.add_argument('-s', '--strength', default=5, type=int,
-                help='The strength of the filter')
-        denoise_parser.add_argument('-m', '--mode', default='fastNL')
-        denoise_parser.set_defaults(func=cls.run)
-        return denoise_parser
-
-    @classmethod
     def build_standalone_parser(cls, subparsers):
-        denoise_parser = cls.build_pipeline_parser(subparsers)
+        denoise_parser = cls.build_parser(subparsers)
         denoise_parser.add_argument('images', nargs='+', type=str)
         denoise_parser.add_argument('-o', '--output')
         denoise_parser.set_defaults(func=pipeline_wrapper, tool=cls)

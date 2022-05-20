@@ -111,11 +111,15 @@ def output_to_basenames(input_paths, images, output_path):
 
 
 def pipeline_wrapper(args):
+    """Wraps a pipeline Tool and runs it in standalone mode"""
     paths = get_paths(args.images)
     images = load_images(paths)
     tool = args.tool.from_args(args)
     results = tool(images)
-    output_to_basenames(paths, results, args.output)
+    if len(images) != len(results):
+        save_images(results, args.output)
+    else:
+        output_to_basenames(paths, results, args.output)
 
 def slice_list(input, size):
     """ Taken from Paulo Scardine from stack overflow """
