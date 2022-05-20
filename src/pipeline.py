@@ -52,6 +52,7 @@ def build_tool(pipeline_stage_dict):
                      InterpolateTool,
                      DenoiseTool,
                      AddOverlayTool,
+                     BlenderRender,
                      ]
     }
     if len(pipeline_stage_dict) > 1:

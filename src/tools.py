@@ -1,5 +1,4 @@
 import argparse
-from collections import namedtuple
 import os
 import textwrap
 from .blender import (split_frames_per_host, remote_blender, blender,
@@ -11,7 +10,15 @@ from .common_ops import (transparentOverlay, interpolate_flow, blend,
                         extract_foreground)
 
 
-Parameter = namedtuple('Parameter', ('cli_flags', 'type', 'help', 'default'))
+class Parameter(object):
+
+    def __init__(self, cli_flags=None, type=str, default=None, help=None, nargs=None):
+        assert cli_flags is not None, "Parameter: cli_flags must be specified as minimum"
+        self.cli_flags = cli_flags
+        self.type = type
+        self.default = default
+        self.help = help
+        self.nargs = nargs
 
 class Tool:
     name='GENERIC TOOL'
@@ -60,7 +67,7 @@ class Tool:
                                             description=cls.description_long)
         for name, param in cls.params.items():
             tool_parser.add_argument(*param.cli_flags, type=param.type,
-                                     default=param.default, help=param.help)
+                                     default=param.default, help=param.help, nargs=param.nargs)
         return tool_parser
 
 
@@ -69,7 +76,7 @@ class AddOverlayTool(Tool):
     description = 'Add transparent overlay frames to static background'
 
     params = {
-        'background': Parameter(cli_flags=['background'], type=str, default=None,
+        'background': Parameter(cli_flags=['background'], type=str,
                                 help='Image of the background')
     }
 
@@ -162,10 +169,10 @@ class ScaleTool(Tool):
     params = {
         'mode': Parameter(cli_flags=['-m', '--mode'], type=str, default='lanczos',
                           help='Interpolation mode to use when resizing'),
-        'percent': Parameter(cli_flags=['-p', '--percent'], type=float, default=None,
+        'percent': Parameter(cli_flags=['-p', '--percent'], type=float,
                              help='Percentage change as a float'),
-        'width': Parameter(cli_flags=['--width'], type=int, default=None, help=None),
-        'height': Parameter(cli_flags=['--height'], type=int, default=None, help=None),
+        'width': Parameter(cli_flags=['--width'], type=int),
+        'height': Parameter(cli_flags=['--height'], type=int),
     }
 
     def __init__(self, mode, percent, width, height):
@@ -327,40 +334,44 @@ class ExtractForegroundTool(Tool):
 
 
 class BlenderRender(Tool):
+    name = 'render'
+    description = 'Wrapper to Blender for rendering a project'
 
-    @classmethod
-    def build_pipeline_parser(cls, subparsers):
-        render_parser = subparsers.add_parser('render',
-                                              help='Wrapper to Blender for rendering a project')
-        render_parser.add_argument('blend_file', type=str,
-                                   help='.blend file to render')
-        render_parser.add_argument('-f', '--frames', type=str, default="1",
-                                   help='Frames to render. Can be a comma separated list, or python range syntax. '
-                                        'Ex: 1,4,5,7:20:2')
-        render_parser.add_argument('-d', '--distribute', type=str, nargs='+', default=['localhost'],
-                                   help='Distribute work to another machine')
-        render_parser.add_argument('-j', '--jump', type=int, default=1,
-                                   help='Number of frames to skip.')
-        render_parser.add_argument('-S', '--scene', type=str,
-                                   help='Scene to render')
-        render_parser.add_argument('-l', '--layer', type=str, default="",
-                                   help='View Layer to render')
-        render_parser.set_defaults(func=cls.pipeline_run, output='render_output')
-        return render_parser
+    params = {
+        'blend_file': Parameter(cli_flags=['blend_file'], type=str,
+                                help='.blend file to render'),
+        'frames': Parameter(cli_flags=['-f', '--frames'], type=str, default='1',
+                            help='Frames to render. Can be a comma separated list, or python range syntax. '
+                                  'Ex: 1,4,5,7:20:2'),
+        'scene': Parameter(cli_flags=['-S', '--scene'], type=str,
+                           help='Scene to render'),
+        'layer': Parameter(cli_flags=['-l', '--layer'], type=str, default="",
+                           help='View Layer to render'),
+        'distribute': Parameter(cli_flags=['-d', '--distribute'], type=str,
+                                default=['localhost'], nargs='+',
+                                help='Distribute work to another machine'),
+        'output': Parameter(cli_flags=['-o', '--output'], type=str, default='render_output',
+                            help='Output path to write rendered frame(s) to')
+    }
+
+    def __init__(self, blend_file, frames, scene, layer, distribute, output):
+        self.blend_file = blend_file
+        self.frames = frames
+        self.scene = scene
+        self.layer = layer
+        self.distribute = distribute
+        self.output = output
 
     @classmethod
     def build_standalone_parser(cls, subparsers):
-        parser = cls.build_pipeline_parser(subparsers)
-        parser.add_argument('-o', '--output', type=str, default='render_output',
-                            help='Output directory to save render results to.')
+        parser = cls.build_parser(subparsers)
         parser.set_defaults(func=cls._run)
         return parser
 
     @classmethod
-    def pipeline_run(cls, args, _):
-        cls._run(args)
-        images = load_images(args.output)
-        return images
+    def _run(cls, args):
+        tool = cls.from_args(args)
+        tool(None)
 
     @staticmethod
     def parse_frames(frame_string):
@@ -376,25 +387,24 @@ class BlenderRender(Tool):
                 frames.append(int(sequence))
         return frames
 
-    @classmethod
-    def _run(cls, args):
-        frames = cls.parse_frames(args.frames)
-        frames_per_host = split_frames_per_host(frames, args.distribute)
+    def __call__(self, images):
+        frames = self.parse_frames(self.frames)
+        frames_per_host = split_frames_per_host(frames, self.distribute)
         print('Frames per host: {}'.format(frames_per_host))
 
         processes = []
-        for host in args.distribute:
+        for host in self.distribute:
             _frames = frames_per_host[host]
             if host == 'localhost':
-                p = blender(blend_file=os.path.expanduser(args.blend_file),
-                            output=args.output,
-                            scene=args.scene,
-                            layer=args.layer,
+                p = blender(blend_file=os.path.expanduser(self.blend_file),
+                            output=self.output,
+                            scene=self.scene,
+                            layer=self.layer,
                             frames=_frames)
             else:
                 p = remote_blender(host,
-                                   blend_file=args.blend_file,
-                                   output=args.output,
+                                   blend_file=self.blend_file,
+                                   output=self.output,
                                    frames=_frames)
             processes.append(p)
         try:
@@ -407,7 +417,7 @@ class BlenderRender(Tool):
             for p in processes:
                 p.terminate()
             raise
-        for host in args.distribute:
+        for host in self.distribute:
             if host != 'localhost':
-                copy_results_from_host(host, args.output)
-                cleanup_host(host, args.blend_file, args.output)
+                copy_results_from_host(host, self.output)
+                cleanup_host(host, self.blend_file, self.output)
