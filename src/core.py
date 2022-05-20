@@ -1,11 +1,12 @@
-import os
 from multiprocessing import Pool, cpu_count
-import re
 from subprocess import Popen
-import subprocess
-import shlex
-import sys
+import itertools
+import os
+import re
 import requests
+import shlex
+import subprocess
+import sys
 
 import cv2
 from tqdm import tqdm
@@ -76,6 +77,10 @@ def load_images(paths):
     imgs = parallelize(load_image, params)
     return imgs
 
+def load_images_iter(paths):
+    for path in get_paths(paths):
+        yield load_image(path)
+
 
 def save_image(img, path):
     cv2.imwrite(path, img)
@@ -115,7 +120,7 @@ def pipeline_wrapper(args):
     paths = get_paths(args.images)
     images = load_images(paths)
     tool = args.tool.from_args(args)
-    results = tool(images)
+    results = list(tool(images))
     if len(images) != len(results):
         save_images(results, args.output)
     else:
@@ -168,3 +173,10 @@ def download_url(url, save_path):
         for chunk in r.iter_content(chunk_size=chunk_size):
             datasize = f.write(chunk)
             progress.update(datasize)
+
+def pairwise(iterable):
+    """ From itertools.pairwise. I could have updated to python 3.10, but my conda install is broken... """
+    # pairwise('ABCDEFG') --> AB BC CD DE EF FG
+    a, b = itertools.tee(iterable)
+    next(b, None)
+    return zip(a, b)

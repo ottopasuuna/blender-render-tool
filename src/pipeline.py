@@ -1,7 +1,7 @@
 import argparse
 import yaml
 
-from .core import load_images, save_images
+from .core import load_images, save_images, load_images_iter
 
 from .tools import (AddOverlayTool, InterpolateTool, ScaleTool,
                    DenoiseTool, BlenderRender)
@@ -23,7 +23,7 @@ class LoadImages(object):
         return cls(path=dct['path'])
 
     def __call__(self, images):
-        return load_images(self.path)
+        return load_images_iter(self.path)
 
 class SaveImages(object):
     name = 'save'

@@ -1,10 +1,12 @@
 import argparse
 import os
 import textwrap
+from itertools import chain
 from .blender import (split_frames_per_host, remote_blender, blender,
                       copy_results_from_host, cleanup_host)
 from .core import (load_images, parallelize, load_image, save_images,
-                  pipeline_wrapper, save_or_show, download_url, MODEL_CACHE_DIR)
+                   pipeline_wrapper, save_or_show, download_url, MODEL_CACHE_DIR,
+                   pairwise)
 from .common_ops import (transparentOverlay, interpolate_flow, blend,
                         scale, dnn_upscale, denoise, add_noise, diff, blend_all,
                         extract_foreground)
@@ -97,10 +99,9 @@ class AddOverlayTool(Tool):
         return overlay_parser
 
     def __call__(self, images):
-        bg = load_image(self.background)
-        params = [(subject, bg) for subject in images]
-        merged = parallelize(transparentOverlay, params)
-        return merged
+        background = load_image(self.background)
+        for foreground in images:
+            yield transparentOverlay(foreground, background)
 
 class InterpolateTool(Tool):
     name = 'interpolate'
@@ -130,22 +131,15 @@ class InterpolateTool(Tool):
         else:
             raise ValueError(f'Invalid interpolation mode \"{self.mode}\"')
 
-        # Grouping files to interpolate
-        curr = 0
-        end = len(images) - 1
-        groups = []
-        while curr < end:
-            frame1 = images[curr]
-            frame3 = images[curr+1]
-            groups.append((frame1, frame3))
-            curr += 1
-
-        # Interpolation
-        interp_frames = parallelize(interp_func, groups)
-        all_frames = [None]*(len(interp_frames) + len(images))
-        all_frames[::2] = images
-        all_frames[1::2] = interp_frames
-        return all_frames
+        try:
+            for frame1, frame3 in pairwise(images):
+                yield frame1
+                yield interp_func(frame1, frame3)
+                # frame3 will be frame1 on the next pair
+            # But on the last iteration, we do need to return the final frame
+            yield frame3
+        except UnboundLocalError as e:
+            raise ValueError("Not enough images specified, need at least two to interpolate")
 
 
 class ScaleTool(Tool):
@@ -194,7 +188,7 @@ class ScaleTool(Tool):
         return scale_parser
 
     def __call__(self, images):
-        template = images[0]
+        template = next(images)
         if self.percent:
             height, width = int(template.shape[0]*self.percent), int(template.shape[1]*self.percent)
         else:
@@ -208,12 +202,11 @@ class ScaleTool(Tool):
             if self.percent not in supported_factors[self.mode]:
                 raise ValueError("Supported factors for {} are {}".format(self.mode, supported_factors[self.mode]))
             self.get_dnn_model(self.mode, factor)
-            params = [(img, self.mode, self.percent) for img in images]
-            scaled = parallelize(dnn_upscale, params)
+            for image in chain([template], images):
+                yield dnn_upscale(image, self.mode, self.percent)
         else:
-            params = [(img, width, height, self.mode) for img in images]
-            scaled = parallelize(scale, params)
-        return scaled
+            for image in chain([template], images):
+                yield scale(image, width, height, self.mode)
 
     @staticmethod
     def get_dnn_model(model, factor):
@@ -252,9 +245,8 @@ class DenoiseTool(Tool):
         denoise_parser.set_defaults(func=pipeline_wrapper, tool=cls)
 
     def __call__(self, images):
-        params = [(img, self.strength, self.mode) for img in images]
-        denoised = parallelize(denoise, params)
-        return denoised
+        for image in images:
+            yield denoise(image, self.strength, self.mode)
 
 
 class AddNoiseTool(Tool):
