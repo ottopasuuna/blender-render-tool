@@ -3,8 +3,16 @@
 import json
 import os
 import sys
+import glob
 
 import bpy
+
+
+def temporal_denoise(input_dir, output_dir):
+    for file in os.listdir(input_dir):
+        infile = os.path.join(input_dir, file)
+        outfile = os.path.join(output_dir, file)
+        bpy.ops.cycles.denoise_animation(input_filepath=infile, output_filepath=outfile)
 
 def render(output_file,
            frame=None, # Leave current frame alone
