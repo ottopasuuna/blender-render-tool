@@ -52,7 +52,11 @@ class Tool:
                 dct_val = dct.get(name, param.default)
             else:
                 dct_val = param.default
-            kwargs[name] = param.type(dct_val) if dct_val is not None else None
+            if param.nargs in {'*', '+'}:
+                param_type = lambda l: [param.type(v) for v in l]
+            else:
+                param_type = param.type
+            kwargs[name] = param_type(dct_val) if dct_val is not None else None
         return cls(**kwargs)
 
     @classmethod
@@ -395,18 +399,19 @@ class BlenderRender(Tool):
         processes = []
         for host in self.distribute:
             _frames = frames_per_host[host]
-            if host == 'localhost':
-                p = blender(blend_file=os.path.expanduser(self.blend_file),
-                            output=self.output,
-                            scene=self.scene,
-                            layer=self.layer,
-                            frames=_frames)
-            else:
-                p = remote_blender(host,
-                                   blend_file=self.blend_file,
-                                   output=self.output,
-                                   frames=_frames)
-            processes.append(p)
+            if _frames:
+                if host == 'localhost':
+                    p = blender(blend_file=os.path.expanduser(self.blend_file),
+                                output=self.output,
+                                scene=self.scene,
+                                layer=self.layer,
+                                frames=_frames)
+                else:
+                    p = remote_blender(host,
+                                       blend_file=self.blend_file,
+                                       output=self.output,
+                                       frames=_frames)
+                processes.append(p)
         try:
             for p in processes:
                 p.wait()
